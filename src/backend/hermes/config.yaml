@@ -1,0 +1,103 @@
+# Customizacoes do Hermes para o Sabor da Maria.
+#
+# Este arquivo NAO substitui o config.yaml do Hermes — ele e o nosso DELTA.
+# O install.py funde estas chaves no ~/.hermes/config.yaml preservando todo
+# o resto (o arquivo original tem centenas de defaults).
+
+# --------------------------------------------------------------------------- #
+# Modelo — local, sem custo de API.
+# A escolha esta justificada em bench.md: Qwen3.5-9B venceu o Gemma 4 12B
+# em tool calling (8/8 vs 3/8) e em velocidade (2 a 9x).
+# --------------------------------------------------------------------------- #
+model:
+  provider: lmstudio
+  # Decidido em teste de fluxo real, nao so no bench isolado:
+  #
+  #                       prato_salvar    faltantes   alegou sucesso falso
+  #   Qwen3.5-9B          10 itens        7 criados   parcial (inventou preco)
+  #   Gemma 4 12B         NADA            nada        TOTAL (banco vazio)
+  #
+  # O Gemma respondeu "Ingredientes Salvos" com 12 itens listados e o banco
+  # intocado. Errar e uma coisa; relatar sucesso inexistente e outra — nao se
+  # corrige com prompt. O bench ja apontava (3/8 vs 8/8 em rota de tool).
+  default: qwen/qwen3.5-9b
+  base_url: http://127.0.0.1:1234/v1
+
+  # O Hermes rejeita no startup qualquer modelo com janela abaixo de 64.000
+  # tokens (MINIMUM_CONTEXT_LENGTH, hard-coded). O LM Studio carrega usando
+  # o contexto do metadata do GGUF — que aqui dava 8.192 — entao sem este
+  # override o agente nem sobe.
+  #
+  # Com isto o Hermes passa context_length no POST /api/v1/models/load.
+  # Vale so para COLD LOAD: se o modelo ja estiver carregado, o contexto da
+  # instancia existente e autoritativo e ele nao recarrega.
+  context_length: 65536
+
+  # Auxiliares ficam em 'auto' de proposito: com 16 GB de VRAM, atribuir um
+  # segundo modelo faria o LM Studio descarregar e recarregar a cada troca.
+  # 'auto' reaproveita o modelo principal.
+
+# --------------------------------------------------------------------------- #
+# Raciocinio
+#
+# O Qwen3.5 so aceita 'on' / 'off'. Mandar 'medium' faz o LM Studio rebaixar
+# para 'on' — raciocinio ligado em TODA chamada. O bench mediu o custo disso:
+# o modelo gastava o orcamento inteiro de tokens pensando antes de responder.
+#
+# Num loop agentico isso e pago a cada rodada. A decisao de qual ferramenta
+# chamar nao precisa de cadeia de raciocinio: o schema da tool e a skill ja
+# dizem o que fazer.
+# --------------------------------------------------------------------------- #
+agent:
+  reasoning_effort: none
+
+# --------------------------------------------------------------------------- #
+# Toolsets
+#
+# O default `hermes-cli` liga 20 tools e gera 35 KB de schema — reenviados a
+# cada rodada. Nenhuma marmita precisa de navegador, terminal, TTS ou geracao
+# de imagem.
+#
+# ATENCAO: cada servidor MCP vira um toolset chamado `mcp-<nome>`
+# (toolsets.py:286). Omitir essa linha faz nossas 9 ferramentas sumirem em
+# silencio — o agente conversa e nao consegue fazer nada.
+# --------------------------------------------------------------------------- #
+platform_toolsets:
+  cli:
+    - mcp-sabor-da-maria   # as 9 tools do dominio
+    - web                  # web_search + web_extract — o requisito 2.1 exige
+    - skills               # skills_list / skill_view (progressive disclosure)
+    - memory               # o que a Dona Maria contou, entre sessoes
+    - delegation           # delegate_task — os workers
+    - clarify              # perguntar a ela de forma estruturada
+
+# --------------------------------------------------------------------------- #
+# Delegacao
+# 3 filhos + 1 pai = 4 predicoes simultaneas, que e exatamente o numero de
+# slots PARALLEL com que o LM Studio e carregado.
+# --------------------------------------------------------------------------- #
+delegation:
+  max_concurrent_children: 3
+  max_spawn_depth: 1
+  orchestrator_enabled: true
+
+# --------------------------------------------------------------------------- #
+# Ferramentas do dominio, servidas pelo nosso MCP.
+# Lista explicita: o agente enxerga so o que precisa.
+# --------------------------------------------------------------------------- #
+mcp_servers:
+  sabor-da-maria:
+    url: http://127.0.0.1:9000/mcp
+    tools:
+      include:
+        - despensa
+        - perfil_ler
+        - perfil_gravar
+        - perfil_pendente
+        - prato_salvar
+        - prato_checar
+        - prato_aceitar
+        - cmv
+        - cenarios
+      prompts: false
+      resources: false
