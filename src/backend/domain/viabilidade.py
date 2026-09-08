@@ -7,11 +7,13 @@ Isso nao e uma instrucao de prompt: e uma funcao que devolve `apto=False` e
 uma lista de perguntas. Quem chama (o MCP) recusa a gravacao enquanto houver
 pendencia — o modelo nao tem como pular.
 
-Quatro coisas podem travar um prato:
+Cinco coisas podem travar um prato:
 
     utensilio/tecnica  ela nao tem, ou ainda nao foi perguntado
     unidade            a receita pede grama e a despensa so sabe 'un'
     estoque            falta ingrediente e nao da para comprar
+    porcao             a porcao nao tem peso de porcao — nem prato de verdade
+                       (unidade errada), nem receita inteira (sem dividir)
     orcamento          as compras nao cabem nos R$ 80
 
 Toda pendencia carrega a PERGUNTA pronta. O agente nao precisa inventar.
@@ -19,13 +21,17 @@ Toda pendencia carrega a PERGUNTA pronta. O agente nao precisa inventar.
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Iterable, Sequence
 
-from .unidades import UnidadeIncompativel, converter
+from .unidades import UnidadeIncompativel, converter, normalizar
 
 __all__ = [
+    "PORCAO_MAXIMA",
+    "achatar",
+    "PORCAO_MINIMA",
     "RequisitoPerfil",
     "FatoPerfil",
     "ItemDespensa",
@@ -112,7 +118,7 @@ class ItemReceita:
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Pendencia:
-    tipo: str  # utensilio | tecnica | restricao | unidade | estoque | orcamento
+    tipo: str  # utensilio | tecnica | restricao | unidade | estoque | porcao | orcamento
     chave: str
     pergunta: str
     detalhe: str = ""
@@ -142,17 +148,34 @@ class Viabilidade:
 
 
 # --------------------------------------------------------------------------- #
+def achatar(texto: str) -> str:
+    """Chave de comparacao: sem acento, sem caixa, sem espaco sobrando.
+
+    O requisito do prato e a resposta dela sao digitados por partes diferentes
+    do sistema, e nunca coincidem no acento. O gate ficou pedindo "panela de
+    pressao" com o perfil ja gravado como "panela de pressão" — ela respondia,
+    o dado entrava, e a pergunta voltava na rodada seguinte. Para sempre.
+
+    >>> achatar("Panela de Pressão")
+    'panela de pressao'
+    >>> achatar("panela de pressao") == achatar("Panela de Pressão")
+    True
+    """
+    plano = unicodedata.normalize("NFKD", str(texto)).encode("ascii", "ignore").decode()
+    return " ".join(plano.lower().split())
+
+
 def _checar_perfil(
     requisitos: Iterable[RequisitoPerfil],
     perfil: Iterable[FatoPerfil],
 ) -> list[Pendencia]:
-    conhecido = {(f.categoria, f.item): f for f in perfil}
+    conhecido = {(achatar(f.categoria), achatar(f.item)): f for f in perfil}
     pendencias: list[Pendencia] = []
 
     for req in requisitos:
         if not req.obrigatorio:
             continue
-        fato = conhecido.get((req.categoria, req.item))
+        fato = conhecido.get((achatar(req.categoria), achatar(req.item)))
 
         if fato is None or fato.status != "confirmado":
             pendencias.append(
@@ -257,6 +280,49 @@ def _checar_ingredientes(
     return pendencias, compras, tem
 
 
+# Uma porcao de prato principal pesa entre 300 g e 800 g. Os DOIS lados
+# importam, e cada um pega um erro diferente:
+#
+#   abaixo de 100 g   unidade lida errada. A extracao ja devolveu 5 g de
+#                     carne seca para uma feijoada, por ler "1 xicara" como
+#                     0,005 kg
+#   acima de 1,2 kg   a receita foi salva INTEIRA, sem dividir pelo rendimento.
+#                     Aconteceu: 1,570 kg num prato, com CMV de R$ 34,18 —
+#                     o custo da panela toda apresentado como custo de marmita
+#
+# Os dois distorcem o CMV, e o CMV vira preco de venda. Por isso e pendencia
+# de gate, nao aviso que o agente pode ignorar. E a pergunta muda conforme o
+# lado: quanto ela serve, ou para quantas porcoes a receita rende.
+# 300 g e o piso de uma marmita de verdade. O piso anterior era 100 g, para
+# pegar so o caso extremo de unidade lida errada — e deixou passar um prato de
+# 106 g com quinze ingredientes de 5 g cada. O CMV saiu a um quarto do real.
+#
+# Estes numeros sao a UNICA fonte de verdade da faixa: o verificador e2e
+# importa daqui em vez de repetir, porque duas copias divergem sozinhas.
+_PORCAO_MINIMA = PORCAO_MINIMA = Decimal("0.300")
+_PORCAO_MAXIMA = PORCAO_MAXIMA = Decimal("1.200")
+
+
+def _peso_porcao(receita: Iterable[ItemReceita]) -> Decimal | None:
+    """Quanto pesa uma porcao, somando so o que da para medir em kg ou L.
+
+    None quando a receita e toda em 'un': nao ha peso para comparar.
+
+    >>> _peso_porcao([ItemReceita("Feijao", Decimal("120"), "g"),
+    ...               ItemReceita("Ovo", Decimal("2"), "un")])
+    Decimal('0.120')
+    >>> _peso_porcao([ItemReceita("Ovo", Decimal("2"), "un")]) is None
+    True
+    """
+    total, mediu = Decimal("0"), False
+    for item in receita:
+        base, fator = normalizar(item.unidade)
+        if base in ("kg", "L") and fator:
+            total += item.quantidade * fator
+            mediu = True
+    return total if mediu else None
+
+
 def avaliar(
     receita: Sequence[ItemReceita],
     despensa: Sequence[ItemDespensa],
@@ -269,7 +335,7 @@ def avaliar(
     Um prato viavel, tudo na despensa:
 
     >>> despensa = [ItemDespensa("Feijao preto", "kg", Decimal("1"), Decimal("9.60"))]
-    >>> receita = [ItemReceita("Feijao preto", Decimal("120"), "g")]
+    >>> receita = [ItemReceita("Feijao preto", Decimal("450"), "g")]
     >>> avaliar(receita, despensa).apto
     True
 
@@ -293,16 +359,56 @@ def avaliar(
     Falta ingrediente e a compra nao cabe no orcamento:
 
     >>> pouco = [ItemDespensa("Bacon", "kg", Decimal("0"), Decimal("23.90"))]
-    >>> r = avaliar([ItemReceita("Bacon", Decimal("2"), "kg")], pouco,
-    ...             orcamento_restante=Decimal("10.00"))
+    >>> r = avaliar([ItemReceita("Bacon", Decimal("0.5"), "kg")], pouco,
+    ...             orcamento_restante=Decimal("2.00"))
     >>> r.apto, r.custo_compras
-    (False, Decimal('47.80'))
+    (False, Decimal('11.950'))
     >>> r.pendencias[0].tipo
     'orcamento'
+
+    A receita inteira pesa 45 g — leitura errada de unidade, nao marmita:
+
+    >>> r = avaliar([ItemReceita("Feijao preto", Decimal("45"), "g")], despensa)
+    >>> r.apto, r.pendencias[0].tipo
+    (False, 'porcao')
+    >>> "pouco para" in r.pendencias[0].pergunta
+    True
+
+    E o oposto: a receita salva sem dividir pelo rendimento.
+
+    >>> r = avaliar([ItemReceita("Feijao preto", Decimal("1.5"), "kg")], despensa)
+    >>> r.pendencias[0].tipo
+    'porcao'
+    >>> "receita inteira" in r.pendencias[0].pergunta
+    True
     """
     pendencias = _checar_perfil(requisitos, perfil)
     p_ing, compras, tem = _checar_ingredientes(receita, despensa)
     pendencias += p_ing
+
+    peso = _peso_porcao(receita)
+    if peso is not None and not (_PORCAO_MINIMA <= peso <= _PORCAO_MAXIMA):
+        if peso < _PORCAO_MINIMA:
+            pergunta = (
+                f"Somando tudo, uma porcao daria {peso * 1000:.0f} g — e pouco para "
+                "uma marmita. Quanto a senhora serve por porcao?"
+            )
+        else:
+            rende = int(peso / Decimal("0.5")) or 2
+            pergunta = (
+                f"Somando tudo da {peso:.2f} kg — isso parece a receita inteira, nao "
+                f"uma marmita (daria umas {rende} porcoes). Para quantas porcoes essa "
+                "receita rende? Preciso dividir antes de calcular o custo de UMA."
+            )
+        pendencias.append(
+            Pendencia(
+                tipo="porcao",
+                chave="peso",
+                pergunta=pergunta,
+                detalhe=f"{peso} kg somados, esperado entre "
+                f"{_PORCAO_MINIMA} e {_PORCAO_MAXIMA} kg",
+            )
+        )
 
     custo = sum((c.custo for c in compras), Decimal("0"))
     if custo > orcamento_restante:

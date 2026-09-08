@@ -213,21 +213,24 @@ def test_compra_complementar_dentro_do_orcamento():
 
 
 def test_estouro_de_orcamento_trava_o_prato():
+    # 0,5 kg de bacon e porcao de marmita. A versao anterior usava 2 kg, que o
+    # gate hoje reprova como receita inteira — o dado de teste e que estava
+    # irreal, nao a regra.
     r = avaliar(
-        [ItemReceita("Bacon", Decimal("2"), "kg")],
+        [ItemReceita("Bacon", Decimal("0.5"), "kg")],
         [ItemDespensa("Bacon", "kg", Decimal("0"), Decimal("23.90"))],
-        orcamento_restante=Decimal("10.00"),
+        orcamento_restante=Decimal("2.00"),
     )
     assert not r.apto
     assert r.pendencias[0].tipo == "orcamento"
-    assert "faltam R$ 37.80" in r.pendencias[0].detalhe
+    assert "faltam R$ 9.95" in r.pendencias[0].detalhe
 
 
 def test_pendencias_acumulam_em_vez_de_parar_na_primeira():
     """A Dona Maria recebe TODAS as perguntas de uma vez, nao uma por rodada."""
     r = avaliar(
         [
-            ItemReceita("Bacon", Decimal("2"), "kg"),
+            ItemReceita("Bacon", Decimal("0.5"), "kg"),
             ItemReceita("Cobertura de chocolate", Decimal("80"), "g"),
         ],
         [

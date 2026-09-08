@@ -21,15 +21,21 @@ igual na maquina de quem clonar o repositorio.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
+import urllib.request
+
+from dotenv import dotenv_values
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
 AQUI = Path(__file__).resolve().parent
+RAIZ = AQUI.parents[2]  # src/backend/hermes -> raiz do repo
+ENV_LOCAL = RAIZ / ".env"
 CONFIG_LOCAL = AQUI / "config.yaml"
 SOUL_LOCAL = AQUI / "SOUL.md"
 SKILLS_LOCAL = AQUI / "skills"
@@ -70,6 +76,90 @@ def fundir(base: dict, novo: dict) -> tuple[dict, list[str]]:
 
 
 # --------------------------------------------------------------------------- #
+# O merge PRESERVA o que ja existe — e o que salva as centenas de chaves
+# default do Hermes. Mas chave que deixou de valer precisa do contrario:
+# preservada, ela continua mandando na configuracao.
+#
+# Chave que precisa SUMIR entra aqui, e o aplicar_config apaga depois de fundir.
+_REMOVER: list[tuple[str, ...]] = []
+
+
+def _apagar(dados: dict, caminho: tuple[str, ...]) -> bool:
+    alvo = dados
+    for parte in caminho[:-1]:
+        alvo = alvo.get(parte) if isinstance(alvo, dict) else None
+        if not isinstance(alvo, dict):
+            return False
+    return alvo.pop(caminho[-1], _APAGADO) is not _APAGADO
+
+
+_APAGADO = object()
+
+
+def ambiente() -> dict:
+    """Le o .env da raiz. Ausente ou vazio nao e erro — e o caminho local."""
+    return dotenv_values(ENV_LOCAL) if ENV_LOCAL.is_file() else {}
+
+
+def escolher_modelo(nosso: dict, env: dict) -> str:
+    """Aponta o Hermes para a OpenAI, com o que estiver no .env.
+
+    Sem chave nao ha instalacao valida: falha aqui, em vez de gravar um
+    config que so quebra na primeira conversa.
+    """
+    chave = (env.get("LLM_PROVIDER_API_KEY") or "").strip()
+    if not chave:
+        raise SystemExit(
+            f"\n  LLM_PROVIDER_API_KEY vazia em {ENV_LOCAL}.\n"
+            "  Copie o .env.example, preencha a chave da OpenAI e rode de novo.\n"
+        )
+
+    modelo = nosso.setdefault("model", {})
+    modelo["provider"] = env.get("LLM_PROVIDER") or "openai-api"
+    modelo["default"] = env.get("LLM_MODEL") or "gpt-5.6-terra"
+
+    # Sobra de instalacao antiga: um `base_url` local faria a chamada da
+    # OpenAI sair para a porta errada, e o merge nao apaga sozinho.
+    _REMOVER.extend([("model", "base_url"), ("model", "context_length")])
+    return f"{modelo['provider']} · {modelo['default']}"
+
+
+def gravar_chave(home: Path, env: dict, dry_run: bool) -> None:
+    """Poe a chave no .env do HERMES_HOME, que e de onde ele le.
+
+    Nunca no config.yaml: aquele arquivo tem backup a cada instalacao, e chave
+    espalhada em copia e chave vazada. O .env do Hermes ja e o lugar dele.
+    """
+    chave = (env.get("LLM_PROVIDER_API_KEY") or "").strip()
+    if not chave:
+        return
+    alvo = home / ".env"
+    linhas = alvo.read_text(encoding="utf-8").splitlines() if alvo.is_file() else []
+    linhas = [l for l in linhas if not l.startswith("OPENAI_API_KEY=")]
+    linhas.append(f"OPENAI_API_KEY={chave}")
+    if dry_run:
+        print(f"  = OPENAI_API_KEY iria para {alvo.name}")
+        return
+    alvo.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    print(f"  + OPENAI_API_KEY gravada em {alvo.name}  ({chave[:12]}...{chave[-4:]})")
+
+
+def materializar(nosso: dict) -> dict:
+    """Troca marcadores do config versionado por valores DESTA maquina.
+
+    Duas coisas nao dao para versionar: o caminho absoluto do projeto, que o
+    Hermes usa para achar o AGENTS.md, e a escolha de provider, que depende
+    de haver ou nao chave de API no .env.
+    """
+    terminal = nosso.get("terminal")
+    if isinstance(terminal, dict) and str(terminal.get("cwd", "")).strip() in ("", "."):
+        if not (RAIZ / "AGENTS.md").is_file():
+            print(f"  ! AGENTS.md nao esta em {RAIZ} — terminal.cwd pode estar errado")
+        terminal["cwd"] = str(RAIZ)
+    print(f"  = modelo: {escolher_modelo(nosso, ambiente())}")
+    return nosso
+
+
 def aplicar_config(home: Path, dry_run: bool) -> None:
     destino = home / "config.yaml"
     if not CONFIG_LOCAL.is_file():
@@ -79,9 +169,13 @@ def aplicar_config(home: Path, dry_run: bool) -> None:
         print(f"  ! {destino} nao existe — o Hermes esta instalado?")
         return
 
-    nosso = yaml.safe_load(CONFIG_LOCAL.read_text(encoding="utf-8")) or {}
+    nosso = materializar(yaml.safe_load(CONFIG_LOCAL.read_text(encoding="utf-8")) or {})
     atual = yaml.safe_load(destino.read_text(encoding="utf-8")) or {}
     resultado, mudancas = fundir(atual, nosso)
+
+    for caminho in _REMOVER:
+        if _apagar(resultado, caminho):
+            mudancas.append(f"- {'.'.join(caminho)} removido (nao vale para este provider)")
 
     if not mudancas:
         print("  = config.yaml ja esta como queremos")
@@ -171,6 +265,43 @@ def aplicar_busca(home: Path, dry_run: bool) -> None:
         print(f"    instale manualmente: {' '.join(cmd)}")
 
 
+def conferir_ferramentas(nosso: dict) -> None:
+    """Avisa se o MCP serve ferramenta que o config nao declara.
+
+    O Hermes filtra pelo `tools.include`: ferramenta fora dessa lista existe no
+    servidor e e INVISIVEL para o agente. Aconteceu com a `ingrediente_preco` —
+    escrita, testada e exposta pelo MCP, e o agente passou uma rodada inteira
+    improvisando com `perfil_gravar` porque nunca a enxergou.
+
+    Nao ha erro em lugar nenhum quando isso acontece: o agente simplesmente usa
+    outra coisa. Dai a conferencia.
+    """
+    declaradas = set(
+        (((nosso.get("mcp_servers") or {}).get("sabor-da-maria") or {}).get("tools") or {}).get(
+            "include"
+        )
+        or []
+    )
+    if not declaradas:
+        return
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:9000/health", timeout=2) as r:
+            servidas = set(json.load(r).get("ferramentas") or [])
+    except Exception:
+        print("  = MCP fora do ar — nao deu para conferir a lista de ferramentas")
+        return
+
+    fora = sorted(servidas - declaradas)
+    fantasma = sorted(declaradas - servidas)
+    if fora:
+        print(f"  ! o MCP serve, mas o config NAO declara: {', '.join(fora)}")
+        print("    o agente nao enxerga essas — inclua em mcp_servers.tools.include")
+    if fantasma:
+        print(f"  ! o config declara, mas o MCP nao serve: {', '.join(fantasma)}")
+    if not fora and not fantasma:
+        print(f"  = {len(declaradas)} ferramentas declaradas, todas servidas")
+
+
 def aplicar_skills(home: Path, dry_run: bool) -> None:
     if not SKILLS_LOCAL.is_dir():
         print("  ! skills/ nao encontrado — pulando")
@@ -212,6 +343,9 @@ def main() -> None:
     if args.dry_run:
         print("(dry-run — nada sera escrito)")
 
+    print("\nchave de API")
+    gravar_chave(home, ambiente(), args.dry_run)
+
     print("\nconfig.yaml")
     aplicar_config(home, args.dry_run)
 
@@ -223,6 +357,11 @@ def main() -> None:
 
     print("\nbusca na web")
     aplicar_busca(home, args.dry_run)
+
+    print("\nferramentas")
+    conferir_ferramentas(
+        materializar(yaml.safe_load(CONFIG_LOCAL.read_text(encoding="utf-8")) or {})
+    )
 
     print("\nPronto.\n" if not args.dry_run else "\nNada foi escrito.\n")
 

@@ -1,7 +1,7 @@
 # Arquitetura — Sabor da Maria
 
 Agente consultora de cardápio e precificação, construído sobre o **Hermes Agent**.
-Modelo local: **Qwen3.5-9B** via LM Studio — ver [bench.md](bench.md).
+Modelo: **gpt-5.6-terra** pela API da OpenAI, configurado no `.env`.
 
 ---
 

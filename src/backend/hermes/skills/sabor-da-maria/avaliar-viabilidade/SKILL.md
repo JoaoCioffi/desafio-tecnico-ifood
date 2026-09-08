@@ -55,6 +55,7 @@ pergunta — nunca com uma conclusão.
 | `utensilio` `tecnica` | pergunte; se ela não tem, veja se dá para adaptar ou troque de receita |
 | `unidade` | a receita pede grama e a despensa só sabe "un" — pergunte quanto pesa a embalagem |
 | `estoque` | falta ingrediente; pergunte o preço onde ela compra |
+| `porcao` | a receita inteira pesa menos que um prato; as quantidades foram lidas na unidade errada — pergunte quanto ela serve e **regrave o prato**, não é pergunta de perfil |
 | `orcamento` | as compras estouram os R$ 80; reduza a porção ou troque ingrediente |
 
 ## Nunca contorne

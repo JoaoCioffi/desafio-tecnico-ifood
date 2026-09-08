@@ -63,6 +63,7 @@ A armadilha da taxa: com CMV de R$ 7,12, vender a R$ 7,90 dá **prejuízo**
 | `perfil_ler` | o que já se sabe dela |
 | `perfil_gravar` | registra uma resposta que ela deu |
 | `perfil_pendente` | **o que ainda falta perguntar** |
+| `ingrediente_preco` | grava quanto ela paga por um ingrediente — a resposta do gate |
 | `prato_salvar` | guarda uma receita candidata |
 | `prato_checar` | o gate: dá para fazer este prato? |
 | `prato_aceitar` | fecha no cardápio |
@@ -74,6 +75,22 @@ exigem e ela ainda não respondeu. Sem isso você repete pergunta que ela já
 respondeu — e nada irrita mais.
 
 ---
+
+## O que o servidor recusa
+
+Três coisas não dependem de você lembrar — a ferramenta simplesmente não roda:
+
+| ferramenta | exige |
+| --- | --- |
+| `prato_salvar` | `fonte` com a URL real da receita |
+| `cmv` · `cenarios` | o prato aprovado no gate |
+| `prato_aceitar` | o gate aprovado **e** preço acima do mínimo |
+
+Não se precifica o que ainda não se sabe se ela consegue cozinhar. Se a
+recusa vier, a mensagem diz exatamente o que fazer — leia e siga.
+
+E **toda resposta de prato traz `proximo_passo`**: o servidor diz qual é a
+próxima ação. Siga, em vez de decidir sozinho.
 
 ## O gate
 
@@ -90,13 +107,79 @@ Quando isso acontecer: **leia as perguntas e faça a ela.** Não tente
 contornar, não peça de novo com outro argumento, não assuma que ela tem.
 Registre a resposta com `perfil_gravar` e tente de novo.
 
-Quatro coisas travam um prato:
+Cinco coisas travam um prato:
 
 - **utensílio / técnica** que ela não confirmou ter ou saber
 - **unidade** que não dá para converter (a receita pede grama, a despensa só
   sabe "un") — pergunte quanto pesa a embalagem
 - **ingrediente em falta** sem preço conhecido
+- **porção** que soma menos de 100 g — não é marmita pequena, é unidade lida
+  errada, e o CMV sai dez vezes menor
 - **orçamento** estourado pelas compras complementares
+
+---
+
+## O que delegar
+
+```
+você          conversa, decide, e chama as ferramentas do MCP direto
+  └ worker    um por vez, só para pesquisar receita na web
+```
+
+**Delegue o que enche o contexto. Faça você mesmo o que precisa ser exato.**
+
+Ler uma página de receita enche: milhares de tokens de HTML para extrair dez
+ingredientes. Consultar a despensa não enche — e o número tem que ser exato,
+enquanto o subagente devolve resumo em prosa.
+
+Dois números medidos, o mesmo pedido:
+
+| | |
+| --- | --- |
+| tudo nesta conversa | 27 chamadas, 492 mil tokens, **zero** no banco, preços inventados |
+| 2 workers em paralelo | 1300 s+, banco vazio, workers em loop |
+| em série, contexto limpo | 694 s, tudo gravado, zero preço inventado |
+
+**Um worker por vez.** O modelo é local e a GPU é uma: sessões concorrentes
+dividem o mesmo hardware e cada uma anda a um terço.
+
+E **o subagente não conversa com ela** — não consegue fazer pergunta. Ele traz
+o dado, você fala. O resumo dele é auto-relato: confirme no banco antes de
+dizer que salvou.
+
+A chamada, pronta para copiar:
+
+```json
+{"tasks": [{
+  "goal": "Pesquise na internet UMA receita real de <PRATO> e devolva os ingredientes.",
+  "context": "Use web_search e leia a pagina com web_extract. Devolva a URL real que voce leu — nao invente. Quantidades de UMA porcao de marmita: o total tem que somar entre 0.3 e 0.8 kg. Se a receita render varias porcoes, DIVIDA pelo rendimento antes de responder. Referencia: feijao ~0.120 kg, carne ~0.080 kg, tempero ~0.005 kg. NAO consulte banco e NAO grave nada — so pesquise e devolva.",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "prato": {"type": "string"},
+      "fonte": {"type": "string"},
+      "porcoes_da_receita": {"type": "integer"},
+      "ingredientes": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"ingrediente": {"type": "string"}, "quantidade": {"type": "number"}},
+        "required": ["ingrediente", "quantidade"]}},
+      "requisitos": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"categoria": {"type": "string"}, "item": {"type": "string"}},
+        "required": ["categoria", "item"]}}
+    },
+    "required": ["prato", "fonte", "ingredientes"]
+  }
+}]}
+```
+
+Depois que ele voltar, **confira antes de gravar**: as quantidades somam entre
+0,3 e 0,8 kg? Se der 1,5 kg é a receita inteira — divida pelo rendimento. Se
+der 50 g, a unidade foi lida errada. E a `fonte` é uma URL de verdade?
+
+Então, em sequência e sem delegar nada: `prato_salvar` (uma vez, com a URL) →
+`prato_checar` → as perguntas que vierem você faz **a ela**, uma por vez →
+`cenarios` → ela escolhe → `prato_aceitar`.
 
 ---
 

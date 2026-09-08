@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS evento (
     momento     TIMESTAMPTZ NOT NULL DEFAULT now(),
     ferramenta  TEXT        NOT NULL,
     fase        TEXT        NOT NULL
-                CHECK (fase IN ('inicio', 'progresso', 'fim', 'erro')),
+                CHECK (fase IN ('inicio', 'progresso', 'fim', 'recusa', 'cancelado', 'erro')),
     mensagem    TEXT        NOT NULL,
     dados       JSONB
 );
