@@ -2,11 +2,11 @@
 Sobe o Postgres e o Hermes juntos e SEGURA O TERMINAL.
 Os containers vivem enquanto o script viver: Ctrl+C derruba os dois.
 
-    python .docker/runner.py            # sobe tudo e segue os logs
+    python .docker/runner.py            # sobe tudo e segura o terminal no painel
     python .docker/runner.py --setup    # wizard do Hermes (rodar uma vez, antes)
     python .docker/runner.py --down     # derruba, preserva volume e imagens
     python .docker/runner.py --reset    # DESTROI o volume do banco
-    python .docker/runner.py --delete   # DESTROI containers, volume, rede e imagens
+    python .docker/runner.py --delete   # DESTROI tudo, inclusive os dados do agente
 
 A cada subida ele tambem aplica o perfil versionado no config do agente e
 carrega a planilha da Dona Maria no Postgres. Os dois passos sao idempotentes.
@@ -41,6 +41,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -80,6 +81,12 @@ BANNER = r"""
 """[1:-1].split("\n")
 
 LEGENDA = "docker compose telemetry"
+
+# Os dois comandos que valem estar a vista de quem esta olhando o painel.
+# `--down` e redundante (o Ctrl+C ja faz, e o rodape diz) e `--reset` e um
+# subconjunto de `--delete`; listar os quatro viraria menu, nao dica.
+COMANDOS = (("--setup", "reconfigura pelo wizard"),
+            ("--delete", "apaga tudo e recomeca do zero"))
 VOLUME = "sabor-da-maria-pgdata"
 REDE = "sabor-da-maria-net"
 # O MCP entra como servico monitorado, mas NAO ganha bloco proprio: o painel
@@ -1191,13 +1198,23 @@ def cabecalho(versao: str) -> list[str]:
     largura_banner = max(len(l) for l in BANNER)
 
     if largura() < largura_banner:
-        return [f"  {B}{PROJETO}{R} {D}· {legenda}{R}"]
+        return [f"  {B}{PROJETO}{R} {D}· {legenda}{R}",
+                "  " + "  ".join(f"{f} {D}{t}{R}" for f, t in COMANDOS)]
 
     # Arredonda para CIMA quando a sobra e impar: com 81 de banner e 40 de
     # legenda sobram 41 colunas, e meio caractere nao existe. Para cima, a
     # legenda encosta na perna direita do banner em vez de flutuar solta.
     recuo = " " * ((largura_banner - len(legenda) + 1) // 2)
-    return [*(f"{B}{l}{R}" for l in BANNER), "", f"{D}{recuo}{legenda}{R}"]
+
+    # O recuo sai do texto SEM cor. Centrar sobre a string ja pintada contaria
+    # os escapes ANSI como caractere visivel e jogaria a linha para a esquerda
+    # — quanto mais cor, mais torta.
+    ajuda = "   ·   ".join(f"{f} {t}" for f, t in COMANDOS)
+    pintada = "   ·   ".join(f"{f} {D}{t}{R}" for f, t in COMANDOS)
+    recuo_ajuda = " " * max(0, (largura_banner - len(ajuda) + 1) // 2)
+
+    return [*(f"{B}{l}{R}" for l in BANNER), "",
+            f"{D}{recuo}{legenda}{R}", f"{recuo_ajuda}{pintada}"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1582,10 +1599,39 @@ def resetar() -> None:
     print(f"  {VERDE}{OK}{R} volume removido\n")
 
 
+def remover_arvore(caminho: Path) -> list[str]:
+    """Apaga a arvore e devolve o que nao saiu, em vez de levantar.
+
+    O `onexc` nao e zelo: no Windows o unlink respeita o atributo somente-
+    leitura do PROPRIO arquivo, nao a permissao do diretorio como no POSIX, e
+    o Hermes deixa varios assim em `bin/` e `lazy-packages/`. Sem o retry
+    depois do chmod, o rmtree morre no meio e deixa a arvore pela metade — o
+    pior dos dois mundos, porque o proximo boot acha config incompleta.
+
+    O que resta costuma ser handle preso pelo Docker Desktop, que solta
+    sozinho em segundos. Por isso vira aviso, nao excecao: o resto do
+    `--delete` ja foi feito e travar aqui nao desfaz nada.
+    """
+    restos: list[str] = []
+
+    def insistir(func, alvo, exc) -> None:
+        try:
+            os.chmod(alvo, stat.S_IWRITE)
+            func(alvo)
+        except OSError as erro:
+            restos.append(f"{alvo}: {erro.strerror or erro}")
+
+    shutil.rmtree(caminho, onexc=insistir)
+    return restos
+
+
 def apagar_tudo() -> None:
     confirmar(
-        f"apaga {B}containers, volume, rede e as imagens baixadas{R} "
-        f"{D}(postgres:alpine e nousresearch/hermes-agent){R}.",
+        f"apaga {B}containers, volume, rede, imagens{R} e {B}os dados do agente{R}\n"
+        f"    {D}o banco inteiro, e {DADOS_HERMES.name}/ com config, memorias, "
+        f"sessoes e o historico de conversa.{R}\n"
+        f"    {D}o que volta sozinho no proximo `runner.py`: config (da baseline "
+        f"versionada), SOUL, skills e hooks.{R}",
         "apagar",
     )
     # Um comando so ja cobre os quatro; os `docker ... rm` abaixo sao rede de
@@ -1595,10 +1641,26 @@ def apagar_tudo() -> None:
     subprocess.run(["docker", "volume", "rm", "-f", VOLUME], capture_output=True)
     subprocess.run(["docker", "network", "rm", REDE], capture_output=True)
     print(f"  {VERDE}{OK}{R} containers, volume, rede e imagens removidos")
+
     if DADOS_HERMES.exists():
-        print(f"  {D}mantido: {DADOS_HERMES} (config, skills e memorias do agente){R}")
-        print(f"  {D}apague a mao se quiser refazer o setup do zero{R}")
-    print()
+        if restos := remover_arvore(DADOS_HERMES):
+            print(f"  {AMAR}{FALHA}{R} {DADOS_HERMES.name}/ saiu pela metade, "
+                  f"{len(restos)} item(ns) presos:")
+            for resto in restos[:3]:
+                print(f"      {D}{resto}{R}")
+            print(f"  {D}costuma ser handle do Docker Desktop; repita em alguns "
+                  f"segundos{R}")
+        else:
+            print(f"  {VERDE}{OK}{R} dados do agente removidos "
+                  f"{D}· {DADOS_HERMES.name}/{R}")
+
+    print(f"\n  {D}o proximo {R}{B}python .docker/runner.py{R}{D} reconstroi tudo "
+          f"do zero, sem wizard:{R}")
+    # as_posix() nas duas: o Path do Windows imprime com barra invertida, e
+    # a linha sairia com as duas barras misturadas. Barra normal e o que se
+    # digita para chamar o proprio runner.
+    print(f"  {D}a config vem de {BASELINE.relative_to(RAIZ).as_posix()} e o resto de "
+          f"{PERFIL.parent.relative_to(RAIZ).as_posix()}/{R}\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -1608,7 +1670,7 @@ def main() -> None:
     grupo.add_argument("--setup", action="store_true", help="wizard do Hermes (rodar uma vez, antes)")
     grupo.add_argument("--down", action="store_true", help="derruba os containers, preserva o resto")
     grupo.add_argument("--reset", action="store_true", help="DESTROI o volume do banco e recomeca")
-    grupo.add_argument("--delete", action="store_true", help="DESTROI containers, volume, rede e imagens")
+    grupo.add_argument("--delete", action="store_true", help="DESTROI tudo, inclusive os dados do agente")
     args = ap.parse_args()
 
     # ler_env() antes de tudo: e ele que carrega SEGREDOS, e sem isso um erro
