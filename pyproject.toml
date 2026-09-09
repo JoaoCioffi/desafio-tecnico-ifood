@@ -34,4 +34,9 @@ pythonpath = ["src/backend"]
 #  `.docker` nunca seria varrido. O runner e host-side e nao faz parte do
 #  dominio, mas a serie do painel tem logica de escala propria — e ja escondeu
 #  um bug de fatiamento — entao os doctests dela rodam junto.
-testpaths = ["src/backend/domain", "src/backend/tests", ".docker/runner.py"]
+#  `observador.py` entra pelo ARQUIVO, nao pelo pacote: `mcp_server/` inteiro
+#  nao pode, porque `server.py` importa fastmcp e o host nao tem — aquilo so
+#  existe dentro da imagem do MCP. O observador e stdlib puro de proposito,
+#  e por isso os doctests da forma dos payloads rodam aqui fora.
+testpaths = ["src/backend/domain", "src/backend/tests", ".docker/runner.py",
+             "src/backend/mcp_server/observador.py"]
