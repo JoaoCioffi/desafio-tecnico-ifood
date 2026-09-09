@@ -139,6 +139,36 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 .gain b{font-size:12.2px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.16}
 .gain span{font-size:10.8px;color:var(--muted);line-height:1.36}
 
+/* anatomia do preco — a figura central do slide da conta */
+.pbar{display:flex;border-radius:11px;overflow:hidden;border:1px solid var(--line);
+  flex-shrink:0;height:78px}
+.pseg{display:flex;flex-direction:column;justify-content:center;padding:0 18px;position:relative}
+.pseg .pv{font-size:25px;font-weight:800;letter-spacing:-1px;line-height:1}
+.pseg .pl{font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;margin-top:5px}
+.pseg .ps{font-size:10.4px;line-height:1.25;margin-top:3px}
+.pseg.comida{background:var(--amber-soft);flex:0 0 30%}
+.pseg.comida .pv,.pseg.comida .pl{color:var(--amber)} .pseg.comida .ps{color:#8A5806}
+.pseg.taxa{background:var(--red-tint);flex:0 0 10%;border-left:1px solid var(--line);
+  border-right:1px solid var(--line);padding:0 12px}
+.pseg.taxa .pv,.pseg.taxa .pl{color:var(--red-deep)} .pseg.taxa .ps{color:var(--red-deep)}
+.pseg.margem{background:var(--green-soft);flex:1}
+.pseg.margem .pv,.pseg.margem .pl{color:var(--green-ink)} .pseg.margem .ps{color:var(--green-ink)}
+.pcap{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;flex-shrink:0}
+.pcap .pt{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink);
+  display:flex;align-items:center;gap:8px}
+.pcap .pt .ic{color:var(--red)}
+.pcap .pd{font-size:11.4px;color:var(--muted)}
+
+/* formulas */
+.forms{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1;min-height:0;margin-top:15px}
+.form{border:1px solid var(--line);border-radius:11px;padding:15px 17px;background:#fff;
+  display:flex;flex-direction:column;justify-content:space-between}
+.form .fh{font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
+.form .ff{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.6px}
+.form .ff em{font-style:normal;color:var(--red)}
+.form p{font-size:11.8px;color:var(--body);line-height:1.44}
+.form p b{color:var(--ink);font-weight:700}
+
 /* armadilha: duas direcoes */
 .dirs{display:grid;grid-template-columns:1fr 1fr;gap:15px;flex:1;min-height:0}
 /* A sobra e repartida entre TODOS os blocos, nao empilhada antes do ultimo.
@@ -474,50 +504,52 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 <section class="slide">
   <div class="sh">
     <div>
-      <div class="kick">Os dados</div>
-      <h2>A conta óbvia erra o preço <b>nos dois sentidos</b></h2>
-      <div class="lede">O custo de um ingrediente é o que ela pagou dividido pelo que levou.
-        Em 31 dos 37 itens isso basta. Em 6, o que está escrito na planilha é a
-        <b>embalagem</b> — não a medida.</div>
+      <div class="kick">A conta do delivery</div>
+      <h2>De cada venda, <b>90% são dela</b> — e o insumo sai daí</h2>
+      <div class="lede">O cliente paga <b>P</b>. A plataforma fica com 10%, a Dona Maria recebe
+        0,90·P. O que ela gastou de ingrediente naquele prato é o <b>CMV</b>. Toda a decisão
+        de preço mora entre esses dois números.</div>
     </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">A armadilha</div></div>
+    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">A conta</div></div>
   </div>
   <div class="body">
-    <div class="dirs">
-      <div class="dir up">
-        <div class="dh"><svg class="ic"><use href="#i-trend"/></svg> Embalagem maior que a medida</div>
-        <h4>Superestima o custo</h4>
-        <div class="sd">O balde tem 2 kg. Tratar o balde como se fosse um quilo <b>dobra</b>
-          o preço do ingrediente.</div>
-        <div class="ex">
-          <div class="exl"><span class="en">Alcaparras</span>
-            <span class="ev">R$ 82,00</span><span class="er">R$ 41,00 / kg</span>
-            <span class="ef">2× a mais</span></div>
-        </div>
-        <div class="conseq"><b>O prato bom parece caro e é descartado.</b>
-          E o balde de R$ 82 continua parado na prateleira, virando prejuízo silencioso.</div>
+    <div class="pcap">
+      <div class="pt"><svg class="ic"><use href="#i-scale"/></svg> Anatomia de cada R$ 1,00 vendido</div>
+      <div class="pd">Exemplo com a comida em 30% do preço</div>
+    </div>
+    <div class="pbar">
+      <div class="pseg comida"><div class="pv">30%</div><div class="pl">CMV</div>
+        <div class="ps">o ingrediente do prato</div></div>
+      <div class="pseg taxa"><div class="pv">10%</div><div class="pl">Taxa</div></div>
+      <div class="pseg margem"><div class="pv">60%</div><div class="pl">Margem</div>
+        <div class="ps">o que sobra para ela — sem fórmula: 30 de comida mais 10 de taxa
+          são 40, então sobram 60</div></div>
+    </div>
+    <div class="forms">
+      <div class="form">
+        <div class="fh">Ela recebe</div>
+        <div class="ff"><em>0,90</em> · P</div>
+        <p>A taxa incide sobre a <b>venda</b>, não sobre o lucro. Por isso a conta
+          <b>divide</b> — não soma 10% no fim.</p>
       </div>
-      <div class="dir down">
-        <div class="dh"><svg class="ic"><use href="#i-down"/></svg> Embalagem menor que a medida</div>
-        <h4>Subestima o custo</h4>
-        <div class="sd">O frasco tem 100 ml. Tratar o frasco como se fosse um litro
-          <b>divide por dez</b> o preço do ingrediente.</div>
-        <div class="ex">
-          <div class="exl"><span class="en">Adoçante líquido</span>
-            <span class="ev">R$ 1,90</span><span class="er">R$ 19,00 / L</span>
-            <span class="ef">10× a menos</span></div>
-          <div class="exl"><span class="en">Azeite de oliva</span>
-            <span class="ev">R$ 30,99</span><span class="er">R$ 61,98 / L</span>
-            <span class="ef">2× a menos</span></div>
-        </div>
-        <div class="conseq"><b>O preço sai barato e ela vende no prejuízo.</b>
-          Cada marmita tira dinheiro do caixa, e a conta só aparece no fim do mês.</div>
+      <div class="form">
+        <div class="fh">Preço mínimo</div>
+        <div class="ff">P ≥ CMV / <em>0,90</em></div>
+        <p>O piso para não perder dinheiro. Abaixo dele, <b>cada prato vendido tira
+          dinheiro do caixa</b> dela.</p>
+      </div>
+      <div class="form">
+        <div class="fh">Lucro</div>
+        <div class="ff">L = <em>0,90</em>·P − CMV</div>
+        <p>O agente propõe <b>três cenários</b> de margem com esta conta aberta — e quem
+          escolhe o preço é ela.</p>
       </div>
     </div>
     <div class="band"><svg class="ic"><use href="#i-alert"/></svg>
-      <span><b>São R$ 166,73 mal contados: um quarto de tudo que ela gastou.</b>
-      Por isso o custo não é calculado no meio da conversa — ele já chega pronto,
-      na unidade certa, antes de qualquer preço ser dito.</span></div>
+      <span><b>Tudo isso depende do CMV estar certo — e a conta óbvia erra nos dois sentidos.</b>
+      Em 6 dos 37 itens a planilha traz a <b>embalagem</b>, não a medida: o balde de 2 kg
+      superestima o custo em 2×, o frasco de 100 ml subestima em 10×. São R$ 166,73
+      mal contados, um quarto da despensa.</span></div>
   </div>
 </section>
 
