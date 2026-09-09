@@ -1,26 +1,35 @@
 -- =============================================================================
 --  Sabor da Maria — esquema do banco
 -- =============================================================================
---  Quatro tabelas. Cada uma responde uma pergunta do desafio:
+--  Dois grupos de tabelas, com donos diferentes.
 --
---    ingredientes         o que ela tem e quanto pagou   (as duas abas da planilha)
---    perfil               o que ela tem e sabe fazer     (elicitacao, secao 2.2)
---    pratos               o cardapio                     (secao 2.4)
---    pratos_ingredientes  o que cada prato consome       (CMV e contencao de estoque)
+--  Projecao da planilha — o ETL do runner reescreve a cada subida:
 --
---  As duas abas da planilha (Despensa e Precos) tem a mesma chave (Ingrediente)
---  e casam 1:1 — por isso viram uma tabela so.
+--    despensa    aba Despensa    o que ela tem hoje
+--    precos      aba Precos      o que ela pagou
+--    orcamento   R$ 80,00        o teto para complementos
 --
---  Este script e IDEMPOTENTE: pode rodar quantas vezes for, nunca apaga
---  nem sobrescreve dado existente.
+--  Estado da conversa — so o agente escreve, via servidor MCP:
+--
+--    perfil               o que ela tem e sabe fazer   (elicitacao, secao 2.2)
+--    pratos               o cardapio                   (secao 2.4)
+--    pratos_ingredientes  o que cada prato consome     (ledger)
+--
+--  As duas abas da planilha casam 1:1 pelo nome do ingrediente, mas continuam
+--  separadas: respondem perguntas diferentes, e o join e trivial quando
+--  precisar. Nao ha FK entre elas nem do estado para a projecao — assim uma
+--  recarga da planilha nunca esbarra num prato antigo.
+--
+--  Este script e IDEMPOTENTE: roda quantas vezes for, nunca apaga dado.
 -- =============================================================================
 
+
 -- -----------------------------------------------------------------------------
--- 0. Busca sem acento
+--  Busca sem acento
 -- -----------------------------------------------------------------------------
---  A despensa tem "Feijão preto", "Açúcar", "Açafrão". O agente vai procurar
---  "feijao", "acucar". Sem normalizar, a busca falha e ele conclui que o
---  ingrediente nao existe — e passa a perguntar coisa que ja esta na despensa.
+--  A despensa tem "Feijao preto", "Acucar", "Acafrao" — com acento. O agente
+--  vai procurar "feijao", "acucar". Sem normalizar, a busca falha, ele conclui
+--  que o ingrediente nao existe e passa a sugerir comprar o que ja esta ali.
 -- -----------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
@@ -34,115 +43,210 @@ AS $$ SELECT lower(public.unaccent('public.unaccent', txt)) $$;
 COMMENT ON FUNCTION unaccent_lower IS 'Minusculo e sem acento, para casar nome de ingrediente';
 
 
--- -----------------------------------------------------------------------------
--- 1. ingredientes  —  a planilha, com a unidade normalizada
--- -----------------------------------------------------------------------------
---  A planilha traz a unidade como texto livre: "kg" em uns itens, "balde 2kg"
---  em outros. Dividir preco_pago por qtd_comprada direto daria R$ por EMBALAGEM,
---  nao por kg — o balde de alcaparras sairia a R$ 82,00 em vez de R$ 41,00/kg.
---
---  O ETL le esse texto e extrai duas coisas:
---     unidade_base  a unidade de medida real   (kg, L, un)
---     fator         quanto de unidade_base cabe em 1 unidade da planilha
---
---  O banco entao calcula o custo na unidade base. Onde o texto nao permite
---  extrair o fator, as duas colunas ficam NULAS — e custo_unitario tambem.
---  Nulo aqui nao e falha: e o sinal de que o agente precisa PERGUNTAR.
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS ingredientes (
-    nome            TEXT           PRIMARY KEY,
+-- =============================================================================
+--  1. despensa  —  aba Despensa
+-- =============================================================================
+--  A planilha diz "Alcaparras · 1 · balde 2kg". Isso significa 2 kg, mas o
+--  numero esta preso no texto da unidade. As colunas *_base guardam a leitura
+--  ja resolvida, para que ninguem precise interpretar string em tempo de
+--  consulta — e para que a interpretacao seja a MESMA em todo lugar.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS despensa (
+    ingrediente      TEXT           PRIMARY KEY,
 
-    -- como veio da planilha, preservado para auditoria
-    unidade         TEXT           NOT NULL,
-    estoque         NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (estoque >= 0),
-    qtd_comprada    NUMERIC(12, 4) CHECK (qtd_comprada > 0),
-    preco_pago      NUMERIC(12, 2) CHECK (preco_pago >= 0),
+    -- cru, como veio da planilha, preservado para auditoria
+    quantidade       NUMERIC(12, 4) NOT NULL CHECK (quantidade >= 0),
+    unidade          TEXT           NOT NULL,
 
-    -- extraidos de `unidade` pelo ETL
-    unidade_base    TEXT           CHECK (unidade_base IN ('kg', 'L', 'un')),
-    fator           NUMERIC(12, 6) CHECK (fator > 0),
+    -- resolvidos pelo ETL a partir de `unidade`
+    unidade_base     TEXT           CHECK (unidade_base IN ('kg', 'L', 'un')),
+    fator            NUMERIC(14, 6) CHECK (fator > 0),
 
-    -- Derivada, nunca digitada: o banco garante que custo_unitario e sempre
-    -- coerente. NULO quando o fator nao pode ser extraido da planilha.
-    custo_unitario  NUMERIC(14, 6)
-        GENERATED ALWAYS AS (
-            CASE
-                WHEN qtd_comprada > 0 AND fator > 0
-                THEN preco_pago / (qtd_comprada * fator)
-            END
-        ) STORED,
+    -- Derivada, nunca digitada. NULA quando o texto da unidade nao permite
+    -- extrair o fator — e nulo aqui nao e falha, e o sinal de PERGUNTE.
+    quantidade_base  NUMERIC(14, 6)
+        GENERATED ALWAYS AS (quantidade * fator) STORED,
 
-    criado_em       TIMESTAMPTZ    NOT NULL DEFAULT now()
+    carregado_em     TIMESTAMPTZ    NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE  ingredientes IS 'Despensa da Dona Maria — juncao das abas Despensa e Precos';
-COMMENT ON COLUMN ingredientes.unidade        IS 'Texto cru da planilha: kg, L, un, "balde 2kg", "un 500ml"';
-COMMENT ON COLUMN ingredientes.estoque        IS 'Aba Despensa: Quantidade em estoque';
-COMMENT ON COLUMN ingredientes.qtd_comprada   IS 'Aba Precos: Quantidade comprada';
-COMMENT ON COLUMN ingredientes.preco_pago     IS 'Aba Precos: Preco total pago (R$)';
-COMMENT ON COLUMN ingredientes.unidade_base   IS 'Unidade de medida real extraida de `unidade`';
-COMMENT ON COLUMN ingredientes.fator          IS 'Quanto de unidade_base cabe em 1 unidade da planilha. "balde 2kg" -> 2';
-COMMENT ON COLUMN ingredientes.custo_unitario IS 'Gerada: preco_pago / (qtd_comprada * fator). R$ por unidade_base';
+COMMENT ON TABLE  despensa IS 'Aba Despensa: o que a Dona Maria tem hoje';
+COMMENT ON COLUMN despensa.quantidade      IS 'Cru da planilha: Quantidade em estoque';
+COMMENT ON COLUMN despensa.unidade         IS 'Cru da planilha: kg, L, un, "balde 2kg", "un 500ml"';
+COMMENT ON COLUMN despensa.unidade_base    IS 'Unidade de medida real. un = item CONTADO, nao pesado';
+COMMENT ON COLUMN despensa.fator           IS 'Quanto de unidade_base cabe em 1 unidade da planilha. "balde 2kg" -> 2';
+COMMENT ON COLUMN despensa.quantidade_base IS 'Gerada: quantidade * fator. Estoque real na unidade_base';
 
 
--- -----------------------------------------------------------------------------
--- 2. perfil  —  o que a Dona Maria tem e sabe fazer
--- -----------------------------------------------------------------------------
+-- =============================================================================
+--  2. precos  —  aba Precos
+-- =============================================================================
+--  O enunciado define custo unitario como `preco total pago / quantidade
+--  comprada`. Aplicado ao pe da letra na alcaparra isso da R$ 82,00 por
+--  BALDE — aritmeticamente correto e operacionalmente inutil, porque receita
+--  nenhuma pede um balde. O valor que serve e R$ 41,00 por kg.
+--
+--  As duas contas ficam gravadas, com nomes que nao deixam confundir:
+--
+--    custo_unitario          R$ por unidade_base   <- ESTE entra no CMV
+--    custo_unitario_ingenuo  R$ por embalagem      <- so auditoria
+--
+--  Guardar o ingenuo tem proposito: a divergencia entre as duas colunas e a
+--  medida exata da armadilha, e some se a gente so guardar a resposta certa.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS precos (
+    ingrediente             TEXT           PRIMARY KEY,
+
+    -- cru, como veio da planilha
+    qtd_comprada            NUMERIC(12, 4) NOT NULL CHECK (qtd_comprada > 0),
+    unidade                 TEXT           NOT NULL,
+    preco_pago              NUMERIC(12, 2) NOT NULL CHECK (preco_pago >= 0),
+
+    -- resolvidos pelo ETL a partir de `unidade`
+    unidade_base            TEXT           CHECK (unidade_base IN ('kg', 'L', 'un')),
+    fator                   NUMERIC(14, 6) CHECK (fator > 0),
+
+    -- O numero certo. NULO quando o fator nao pode ser extraido.
+    custo_unitario          NUMERIC(14, 6)
+        GENERATED ALWAYS AS (preco_pago / (qtd_comprada * fator)) STORED,
+
+    -- O numero ingenuo: a divisao literal do enunciado, sem normalizar.
+    custo_unitario_ingenuo  NUMERIC(14, 6)
+        GENERATED ALWAYS AS (preco_pago / qtd_comprada) STORED,
+
+    carregado_em            TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  precos IS 'Aba Precos: quanto a Dona Maria pagou, com o custo unitario ja derivado';
+COMMENT ON COLUMN precos.qtd_comprada  IS 'Cru da planilha: Quantidade comprada';
+COMMENT ON COLUMN precos.unidade       IS 'Cru da planilha: kg, L, un, "balde 2kg", "un 500ml"';
+COMMENT ON COLUMN precos.preco_pago    IS 'Cru da planilha: Preco total pago (R$)';
+COMMENT ON COLUMN precos.unidade_base  IS 'Unidade de medida real. un = item CONTADO, nao pesado';
+COMMENT ON COLUMN precos.fator         IS 'Quanto de unidade_base cabe em 1 unidade da planilha. "balde 2kg" -> 2';
+COMMENT ON COLUMN precos.custo_unitario
+    IS 'USE ESTE NO CMV. R$ por unidade_base: preco_pago / (qtd_comprada * fator)';
+COMMENT ON COLUMN precos.custo_unitario_ingenuo
+    IS 'NAO USE NO CMV. R$ por embalagem: preco_pago / qtd_comprada. Existe so para medir a divergencia';
+
+
+-- =============================================================================
+--  3. orcamento  —  R$ 80,00 para complementos
+-- =============================================================================
+--  Linha unica, garantida pelo CHECK. O ETL apenas SEMEIA o valor inicial e
+--  nunca sobrescreve: depois da primeira carga quem manda aqui e o agente,
+--  conforme a Dona Maria aprova compras complementares.
+--
+--  valor_inicial fica imutavel para que sempre se saiba quanto havia no
+--  comeco — sem ele, "sobraram R$ 12" nao diz se ela gastou bem ou mal.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS orcamento (
+    id             SMALLINT       PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    valor_inicial  NUMERIC(12, 2) NOT NULL CHECK (valor_inicial >= 0),
+    atualizado_em  TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  orcamento IS 'Orcamento para complementos. Linha unica; o saldo e a view vw_orcamento';
+
+
+-- =============================================================================
+--  4. perfil  —  o que a Dona Maria tem e sabe fazer
+-- =============================================================================
+--  Quarta tabela, rompendo o "so tres" e por um motivo.
+--
+--  O Hermes tem memoria propria (MEMORY.md, USER.md), e ela nao serve aqui
+--  por dois defeitos, nenhum contornavel:
+--
+--    limite    2.200 caracteres no total, algo entre 8 e 15 anotacoes curtas.
+--              Utensilio, tecnica e restricao operacional nao cabem.
+--
+--    congelada o conteudo entra no system prompt no INICIO da sessao e nao
+--              muda ate a proxima. O gate da proxima etapa consulta o perfil
+--              na hora do aceite; lendo da memoria, ele ficaria cego ao que
+--              ela respondeu tres mensagens atras.
+--
+--  Isto aqui e estado estruturado, consultavel e sempre atual. A memoria do
+--  Hermes continua com o que ela e: preferencia durável, jeito de conversar.
+--
+--  `status` guarda o que o agente AINDA NAO SABE. Uma linha 'pendente' e uma
+--  pergunta em aberto — e o item 2.2 do enunciado exige justamente que o
+--  agente descubra o que ela nao falou espontaneamente.
+-- =============================================================================
 CREATE TABLE IF NOT EXISTS perfil (
     id             SERIAL      PRIMARY KEY,
     categoria      TEXT        NOT NULL
-                   CHECK (categoria IN ('utensilio', 'tecnica', 'restricao')),
+                   CHECK (categoria IN ('utensilio', 'tecnica', 'restricao', 'preferencia')),
     item           TEXT        NOT NULL,
     resposta       TEXT,
     status         TEXT        NOT NULL DEFAULT 'pendente'
                    CHECK (status IN ('pendente', 'confirmado')),
     atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now(),
 
+    -- Uma linha por assunto: perguntar duas vezes sobre forno e ter duas
+    -- respostas diferentes seria pior que nao ter nenhuma.
     UNIQUE (categoria, item)
 );
 
+CREATE INDEX IF NOT EXISTS idx_perfil_pendente
+    ON perfil (categoria) WHERE status = 'pendente';
+
 COMMENT ON TABLE  perfil IS 'Memoria da elicitacao — o que ja foi perguntado e respondido';
-COMMENT ON COLUMN perfil.item     IS 'Ex.: forno, panela de pressao, massa fresca, espaco na geladeira';
-COMMENT ON COLUMN perfil.resposta IS 'Ex.: tem, nao tem, "so 2 bocas"';
-COMMENT ON COLUMN perfil.status   IS 'pendente = ainda nao perguntado / sem resposta';
+COMMENT ON COLUMN perfil.categoria IS 'utensilio, tecnica, restricao (operacional) ou preferencia (gosto)';
+COMMENT ON COLUMN perfil.item      IS 'Ex.: forno, panela de pressao, massa fresca, espaco na geladeira';
+COMMENT ON COLUMN perfil.resposta  IS 'O que ela respondeu, nas palavras dela: "tem", "nao tem", "so 2 bocas"';
+COMMENT ON COLUMN perfil.status    IS 'pendente = pergunta em aberto, ainda sem resposta dela';
 
 
--- -----------------------------------------------------------------------------
--- 3. pratos  —  o cardapio
--- -----------------------------------------------------------------------------
+-- =============================================================================
+--  5. pratos  —  o cardapio
+-- =============================================================================
+--  `requisitos` guarda o que a RECEITA exige da cozinha, gravado no momento em
+--  que o prato e proposto. O gate le daqui, nao do argumento de quem chama.
+--
+--  A diferenca decide o desafio: se os requisitos viessem como parametro do
+--  aceite, bastaria o agente mandar uma lista vazia para o gate aprovar
+--  qualquer coisa. Ele passaria a validar a AFIRMACAO do agente em vez da
+--  realidade — que e precisamente o que nao pode acontecer.
+--
+--      [{"categoria": "utensilio", "item": "forno"},
+--       {"categoria": "tecnica",   "item": "bechamel"}]
+-- =============================================================================
 CREATE TABLE IF NOT EXISTS pratos (
     id          SERIAL         PRIMARY KEY,
     nome        TEXT           NOT NULL UNIQUE,
     fonte       TEXT,
+    porcoes     INTEGER        NOT NULL DEFAULT 1 CHECK (porcoes > 0),
     status      TEXT           NOT NULL DEFAULT 'sugerido'
                 CHECK (status IN ('sugerido', 'aceito', 'recusado')),
     cmv         NUMERIC(12, 2) CHECK (cmv >= 0),
     preco       NUMERIC(12, 2) CHECK (preco >= 0),
-
-    -- O que a receita exige da cozinha: utensilio, tecnica, restricao.
-    -- Fica no prato porque o gate precisa reavaliar na hora do aceite —
-    -- se dependesse do agente reenviar a lista, bastaria ele esquecer
-    -- para a checagem ser burlada.
-    --   [{"categoria": "utensilio", "item": "panela de pressao"}]
     requisitos  JSONB          NOT NULL DEFAULT '[]'::jsonb,
-
     criado_em   TIMESTAMPTZ    NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE  pratos IS 'Pratos sugeridos, aceitos ou recusados pela Dona Maria';
 COMMENT ON COLUMN pratos.fonte      IS 'URL da receita encontrada na web';
-COMMENT ON COLUMN pratos.cmv        IS 'Custo de Mercadoria Vendida do prato, em R$';
-COMMENT ON COLUMN pratos.preco      IS 'Preco de venda escolhido pela Dona Maria, em R$';
+COMMENT ON COLUMN pratos.status     IS 'So os aceitos consomem estoque e orcamento (ver as views)';
 COMMENT ON COLUMN pratos.requisitos IS 'Utensilios/tecnicas que a receita exige — alimenta o gate';
 
 
--- -----------------------------------------------------------------------------
--- 4. pratos_ingredientes  —  o que cada prato consome
--- -----------------------------------------------------------------------------
+-- =============================================================================
+--  6. pratos_ingredientes  —  o que cada prato consome
+-- =============================================================================
+--  Este e o ledger. Estoque e orcamento NAO sao decrementados em lugar nenhum:
+--  a disponibilidade e calculada a partir daqui pelas views abaixo.
+--
+--  O ganho e a reversibilidade. Se a Dona Maria desistir de um prato, o status
+--  vira 'recusado' e o estoque e o dinheiro voltam sozinhos — sem estorno para
+--  escrever, sem estorno para errar.
+--
+--  Nao ha FK para `despensa`: aquelas tres tabelas sao projecao da planilha e
+--  o ETL as reescreve a cada subida. Uma dependencia daqui poderia bloquear
+--  uma recarga por causa de um prato antigo.
+-- =============================================================================
 CREATE TABLE IF NOT EXISTS pratos_ingredientes (
-    prato_id     INTEGER        NOT NULL REFERENCES pratos(id)         ON DELETE CASCADE,
-    ingrediente  TEXT           NOT NULL REFERENCES ingredientes(nome) ON UPDATE CASCADE,
-    quantidade   NUMERIC(12, 4) NOT NULL CHECK (quantidade > 0),
+    prato_id     INTEGER        NOT NULL REFERENCES pratos(id) ON DELETE CASCADE,
+    ingrediente  TEXT           NOT NULL,
+    quantidade   NUMERIC(14, 6) NOT NULL CHECK (quantidade > 0),
     comprar      BOOLEAN        NOT NULL DEFAULT FALSE,
 
     PRIMARY KEY (prato_id, ingrediente)
@@ -151,88 +255,145 @@ CREATE TABLE IF NOT EXISTS pratos_ingredientes (
 CREATE INDEX IF NOT EXISTS idx_pratos_ing_ingrediente
     ON pratos_ingredientes (ingrediente);
 
-COMMENT ON TABLE  pratos_ingredientes IS 'Ligacao prato <-> ingrediente, com a quantidade usada';
-COMMENT ON COLUMN pratos_ingredientes.quantidade IS 'Na unidade_base do ingrediente';
-COMMENT ON COLUMN pratos_ingredientes.comprar    IS 'TRUE = nao tem na despensa, sai do orcamento de R$ 80';
+-- Ingrediente que ela NAO tem nao esta em `precos`, entao nao ha custo
+-- unitario para multiplicar — e o orcamento ficava parado em R$ 80 mesmo com
+-- compras pendentes. Esta coluna guarda quanto custa comprar ESTA quantidade,
+-- em reais, pesquisado na hora.
+ALTER TABLE pratos_ingredientes
+    ADD COLUMN IF NOT EXISTS custo_compra NUMERIC(12, 2) CHECK (custo_compra >= 0);
+
+-- A unidade precisa ser gravada, nao inferida. Para item da despensa da para
+-- deduzir olhando `despensa`; para item COMPRADO nao ha de onde — e sem ela a
+-- quantidade da receita entrava crua ("200", de 200 ml) e a view somava 200
+-- com 0,2 no mesmo campo. Guardar a unidade e o que torna a soma valida.
+ALTER TABLE pratos_ingredientes
+    ADD COLUMN IF NOT EXISTS unidade_base TEXT CHECK (unidade_base IN ('kg', 'L', 'un'));
+
+COMMENT ON COLUMN pratos_ingredientes.quantidade   IS 'Na unidade_base do ingrediente, ja convertida';
+COMMENT ON COLUMN pratos_ingredientes.comprar      IS 'TRUE = nao tem na despensa, sai do orcamento';
+COMMENT ON COLUMN pratos_ingredientes.custo_compra IS 'R$ para comprar a quantidade. So para item fora da despensa';
 
 
--- -----------------------------------------------------------------------------
--- 5. evento  —  trilha do que o agente fez
--- -----------------------------------------------------------------------------
---  Nao e estado do negocio: e observabilidade. Cada ferramenta do MCP registra
---  o que esta fazendo enquanto faz, e isso serve a tres publicos:
+-- =============================================================================
+--  Migracao: o saldo do orcamento virou conta
+-- =============================================================================
+--  `valor_disponivel` era coluna gravada. Com o ledger, o saldo e derivado dos
+--  pratos aceitos — e manter as duas coisas criaria duas verdades sobre o
+--  mesmo numero, que e o defeito que este projeto inteiro combate.
+-- =============================================================================
+ALTER TABLE orcamento DROP COLUMN IF EXISTS valor_disponivel;
+
+
+-- =============================================================================
+--  7. compras  —  o que ela comprou depois da planilha
+-- =============================================================================
+--  A planilha e uma foto do dia em que ela montou a despensa. Tudo que entra
+--  depois — os complementos pagos com os R$ 80 — entra aqui.
 --
---    o cockpit    le por SSE e mostra o progresso ao vivo, em vez de
---                 deixar a Dona Maria olhando tela parada
---    a auditoria  responde "por que este prato foi recusado?" depois
---    o avaliador  consegue inspecionar o fluxo sem assistir ao video
+--  Existe porque faltava um lugar para a compra ser um FATO. Antes, comprar
+--  creme de leite era so uma linha em `pratos_ingredientes` dizendo quanto o
+--  prato consome: a sobra sumia, e um segundo prato com o mesmo ingrediente
+--  voltava a dizer "nao esta na despensa" — ela tinha a caixa na geladeira e
+--  o sistema nao sabia.
 --
---  Tabela append-only. Nada aqui e lido para decidir regra de negocio.
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS evento (
-    id          BIGSERIAL   PRIMARY KEY,
-    momento     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ferramenta  TEXT        NOT NULL,
-    fase        TEXT        NOT NULL
-                CHECK (fase IN ('inicio', 'progresso', 'fim', 'recusa', 'cancelado', 'erro')),
-    mensagem    TEXT        NOT NULL,
-    dados       JSONB
+--  Duas consequencias, e as duas importam:
+--
+--    estoque    `vw_estoque` soma despensa + compras. A caixa que sobrou fica
+--               disponivel para o proximo prato, como deveria.
+--
+--    orcamento  `vw_orcamento` passa a debitar o que ela GASTOU, nao o que os
+--               pratos consomem. Comprar duas caixas e usar uma tira duas do
+--               orcamento — que e o que acontece no caixa dela.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS compras (
+    id            SERIAL         PRIMARY KEY,
+    ingrediente   TEXT           NOT NULL,
+    quantidade    NUMERIC(14, 6) NOT NULL CHECK (quantidade > 0),
+    unidade_base  TEXT           NOT NULL CHECK (unidade_base IN ('kg', 'L', 'un')),
+    custo_total   NUMERIC(12, 2) NOT NULL CHECK (custo_total >= 0),
+    prato_id      INTEGER        REFERENCES pratos(id) ON DELETE SET NULL,
+    comprado_em   TIMESTAMPTZ    NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_evento_momento ON evento (momento DESC);
+CREATE INDEX IF NOT EXISTS idx_compras_ingrediente ON compras (ingrediente);
 
-COMMENT ON TABLE  evento IS 'Trilha append-only do que o agente fez — alimenta o cockpit e a auditoria';
-COMMENT ON COLUMN evento.ferramenta IS 'Qual tool do MCP gerou o evento';
-COMMENT ON COLUMN evento.mensagem   IS 'Texto curto para humano: "lendo 37 ingredientes"';
-COMMENT ON COLUMN evento.dados      IS 'Payload estruturado opcional, para o cockpit desenhar';
+COMMENT ON TABLE  compras IS 'Complementos comprados com o orcamento de R$ 80';
+COMMENT ON COLUMN compras.quantidade  IS 'Quanto ela comprou, na unidade base — pode ser mais que a receita usa';
+COMMENT ON COLUMN compras.custo_total IS 'R$ que sairam do bolso dela por esta compra';
+COMMENT ON COLUMN compras.prato_id    IS 'Prato que motivou a compra. NULO quando ela compra por conta propria';
 
 
 -- =============================================================================
 --  Visoes derivadas
+--
 --  Estoque comprometido e orcamento gasto sao CONTA, nao dado — por isso sao
---  view e nao tabela. Assim nunca dessincronizam do que esta em pratos.
+--  view e nao coluna. Assim nunca dessincronizam do que esta em `pratos`.
 -- =============================================================================
+-- DROP antes de criar: `CREATE OR REPLACE VIEW` recusa mudanca de TIPO de
+-- coluna, e a soma de despensa + compras muda `estoque_total` de
+-- numeric(14,6) para numeric. Sem o drop o script aborta aqui e o resto do
+-- arquivo — inclusive a outra view — nao chega a rodar.
+DROP VIEW IF EXISTS vw_estoque;
+CREATE VIEW vw_estoque AS
+WITH origem AS (
+    -- O que veio da planilha
+    SELECT d.ingrediente, d.unidade_base,
+           d.quantidade_base AS quantidade,
+           d.quantidade_base * pr.custo_unitario AS valor,
+           d.unidade AS unidade_planilha
+      FROM despensa d
+      JOIN precos   pr USING (ingrediente)
+    UNION ALL
+    -- E o que ela comprou depois
+    SELECT c.ingrediente, c.unidade_base,
+           c.quantidade,
+           c.custo_total,
+           'comprado' AS unidade_planilha
+      FROM compras c
+),
+somado AS (
+    SELECT ingrediente,
+           min(unidade_base)      AS unidade_base,
+           SUM(quantidade)        AS estoque_total,
+           -- Media ponderada: comprar mais caro depois muda o custo do que
+           -- resta. Usar so o preco da planilha subestimaria o CMV do prato
+           -- seguinte; usar so o da ultima compra o superestimaria.
+           SUM(valor) / NULLIF(SUM(quantidade), 0) AS custo_unitario,
+           min(unidade_planilha)  AS unidade_planilha
+      FROM origem GROUP BY ingrediente
+)
+SELECT s.ingrediente,
+       s.unidade_base,
+       s.estoque_total,
+       -- Conta TODO consumo de prato aceito, comprado ou nao. O filtro
+       -- `NOT pi.comprar` fazia sentido quando a compra nao entrava no
+       -- estoque; agora que entra, nao descontar o consumo faria ela comprar
+       -- duas caixas, usar uma, e o sistema dizer que tem duas.
+       COALESCE(SUM(pi.quantidade) FILTER (WHERE p.status = 'aceito'), 0) AS comprometido,
+       s.estoque_total
+         - COALESCE(SUM(pi.quantidade) FILTER (WHERE p.status = 'aceito'), 0) AS disponivel,
+       s.custo_unitario,
+       s.unidade_planilha
+  FROM somado s
+  LEFT JOIN pratos_ingredientes pi ON pi.ingrediente = s.ingrediente
+  LEFT JOIN pratos              p  ON p.id = pi.prato_id
+ GROUP BY s.ingrediente, s.unidade_base, s.estoque_total,
+          s.custo_unitario, s.unidade_planilha;
 
-CREATE OR REPLACE VIEW vw_estoque AS
-SELECT
-    i.nome,
-    i.unidade_base,
-    i.estoque                                          AS estoque_total,
-    COALESCE(SUM(pi.quantidade) FILTER (
-        WHERE p.status = 'aceito' AND NOT pi.comprar
-    ), 0)                                              AS comprometido,
-    i.estoque - COALESCE(SUM(pi.quantidade) FILTER (
-        WHERE p.status = 'aceito' AND NOT pi.comprar
-    ), 0)                                              AS disponivel,
-    i.custo_unitario,
-    i.unidade                                          AS unidade_planilha
-FROM ingredientes i
-LEFT JOIN pratos_ingredientes pi ON pi.ingrediente = i.nome
-LEFT JOIN pratos              p  ON p.id = pi.prato_id
-GROUP BY i.nome, i.unidade_base, i.estoque, i.custo_unitario, i.unidade;
-
-COMMENT ON VIEW vw_estoque IS 'Despensa com o que ja esta comprometido pelos pratos aceitos';
+COMMENT ON VIEW vw_estoque IS 'Despensa + compras, menos o que os pratos ACEITOS consomem';
 
 
-CREATE OR REPLACE VIEW vw_orcamento AS
-SELECT
-    80.00::NUMERIC(12, 2)                                              AS orcamento_total,
-    COALESCE(SUM(pi.quantidade * i.custo_unitario), 0)::NUMERIC(12, 2) AS gasto,
-    (80.00 - COALESCE(SUM(pi.quantidade * i.custo_unitario), 0))::NUMERIC(12, 2) AS restante
-FROM pratos_ingredientes pi
-JOIN pratos       p ON p.id = pi.prato_id
-JOIN ingredientes i ON i.nome = pi.ingrediente
-WHERE p.status = 'aceito'
-  AND pi.comprar;
+DROP VIEW IF EXISTS vw_orcamento;
+CREATE VIEW vw_orcamento AS
+-- Debita o que ela GASTOU, nao o que os pratos consomem. Comprar duas caixas
+-- e usar uma tira duas do orcamento — que e o que acontece no caixa dela. A
+-- versao anterior inferia o gasto do consumo dos pratos e a sobra sumia.
+SELECT o.valor_inicial AS total,
+       COALESCE((SELECT SUM(custo_total) FROM compras), 0)::NUMERIC(12, 2) AS gasto,
+       (o.valor_inicial
+        - COALESCE((SELECT SUM(custo_total) FROM compras), 0))::NUMERIC(12, 2) AS restante
+  FROM orcamento o
+ WHERE o.id = 1;
 
-COMMENT ON VIEW vw_orcamento IS 'Orcamento de R$ 80 para complementos: total, gasto e restante';
-
-
--- Ingredientes cujo custo nao pode ser derivado da planilha.
--- Alimenta a elicitacao: o agente pergunta em vez de chutar.
-CREATE OR REPLACE VIEW vw_unidade_pendente AS
-SELECT nome, unidade, qtd_comprada, preco_pago
-  FROM ingredientes
- WHERE fator IS NULL;
-
-COMMENT ON VIEW vw_unidade_pendente IS 'Itens sem fator de conversao — precisam de pergunta a Dona Maria';
+COMMENT ON VIEW vw_orcamento IS 'Os R$ 80 para complementos: total, gasto e restante';
+COMMENT ON COLUMN orcamento.valor_inicial    IS 'R$ 80,00 do enunciado. Imutavel, e a referencia';

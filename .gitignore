@@ -281,3 +281,16 @@ CLAUDE.md
 tmpclaude*
 .gemini/
 .codex/
+# logs dos processos que o runner sobe
+services/.mcp.log
+
+# espelho da sessao, escrito pelo MCP para eu poder olhar depois
+.estado/
+services/.baseline-terra.json
+
+# Dados do agente Hermes (bind mount do container): guarda .env, auth.json,
+# sessoes e memorias. Nada disso pode ir para o repositorio.
+.docker/hermes-data/
+
+# Backups temporarios do runner
+.docker/*.bkp

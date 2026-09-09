@@ -1,34 +1,190 @@
+# Sobe o par que o projeto precisa: o banco e o agente.
+#
+# Nao ha valor cru aqui dentro. Tudo vem do .env da raiz, por dois caminhos
+# diferentes e de proposito:
+#
+#   --env-file ../.env   resolve os ${VAR} deste arquivo (o runner passa)
+#   env_file: ../.env    injeta as variaveis DENTRO do container do Hermes
+#
+# O primeiro e coisa do compose, o segundo e coisa do processo. Quem confunde
+# os dois acaba com um ${DB_USER} que resolve no YAML mas chega vazio no agente.
+
 name: sabor-da-maria
 
 services:
+  # ------------------------------------------------------------------------ #
   postgres:
-    image: postgres:16-alpine
+    image: postgres:alpine          # alpine + latest, como pedido
     container_name: sabor-da-maria-db
     restart: unless-stopped
 
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: sabor_da_maria
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
       # Evita recriar o cluster a cada up quando o volume ja existe.
       PGDATA: /var/lib/postgresql/data/pgdata
       TZ: America/Sao_Paulo
 
     ports:
-      - "5432:5432"
+      # Preso ao loopback. Sem o "127.0.0.1:" o Docker publica em TODAS as
+      # interfaces do host, e o banco fica visivel para a rede local inteira.
+      - "127.0.0.1:${DB_PORT}:5432"
 
     volumes:
-      # Volume nomeado do Docker: os dados NAO ficam na pasta do repo,
-      # entao quem clonar recebe um banco vazio, carregado so pelo ETL.
+      # Volume nomeado: os dados NAO ficam na pasta do repo, entao quem
+      # clonar recebe um banco vazio.
       - pgdata:/var/lib/postgresql/data
 
+      # O schema entra na INICIALIZACAO do cluster, nao depois. Sem isto havia
+      # uma ordem circular: o servico mcp so fica healthy se conseguir
+      # consultar `pratos`, o Hermes so sobe com o mcp healthy, e quem criava
+      # `pratos` era o ETL do runner — que so roda depois de tudo de pe.
+      #
+      # O entrypoint do postgres executa isto UMA vez, com o cluster vazio, e
+      # ignora em volume ja inicializado. O ETL continua aplicando o mesmo
+      # arquivo a cada subida: e idempotente, e e ele quem propaga mudanca de
+      # schema para um banco que ja existe.
+      - ./db.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+
+    networks:
+      - sabor
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d sabor_da_maria"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 3s
       timeout: 3s
       retries: 20
       start_period: 5s
 
+  # ------------------------------------------------------------------------ #
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: sabor-da-maria-hermes
+    restart: unless-stopped
+
+    # Nao adianta o agente subir antes do banco aceitar conexao.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # Sem isto o gateway sobe, tenta falar com o MCP, leva recusa de conexao
+      # e desabilita as ferramentas para a sessao inteira — sem erro visivel,
+      # so ferramentas que somem.
+      mcp:
+        condition: service_healthy
+
+    # Entrega o .env inteiro ao processo: a chave do LLM, o TELEGRAM_BOT_TOKEN
+    # quando voce adicionar, e o que mais vier depois.
+    env_file:
+      - ../.env
+
+    # `environment` vence `env_file`, entao e aqui que se corrige o que o .env
+    # descreve do ponto de vista do HOST e nao vale dentro da rede do compose.
+    environment:
+      # No .env DB_HOST e "localhost" — certo pra voce, errado aqui dentro:
+      # na rede do compose o banco atende pelo nome do servico.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      # O Hermes procura a credencial pelo nome padrao do provedor, nao pelo
+      # nome generico que o projeto usa. A ponte e feita aqui.
+      OPENAI_API_KEY: ${LLM_PROVIDER_API_KEY}
+      # Sobe o dashboard junto com o gateway, sob a mesma supervisao do s6.
+      # A doc diz que o servico fica registrado mas parado sem esta variavel;
+      # explicitar remove a duvida, ja que a porta e publicada de qualquer jeito.
+      HERMES_DASHBOARD: "1"
+      TZ: America/Sao_Paulo
+
+    ports:
+      # Loopback, pelo mesmo motivo do postgres — e aqui pesa mais: o dashboard
+      # so liga o portao de autenticacao quando ha um auth provider registrado,
+      # e nao ha nenhum. Publicado em 0.0.0.0 seria um painel aberto na LAN.
+      - "127.0.0.1:8642:8642"   # API OpenAI-compativel + health do gateway
+      - "127.0.0.1:9119:9119"   # dashboard web
+
+    volumes:
+      # Bind mount, nao volume nomeado: config.yaml, SOUL.md, skills e
+      # memorias precisam ser lidos e editados a mao fora do container.
+      - ./hermes-data:/opt/data
+
+    command: gateway run
+
+    networks:
+      - sabor
+
+    # O bot do Telegram NAO precisa de nada aqui: ele faz long polling de
+    # SAIDA para api.telegram.org, e a bridge padrao ja permite isso. O que
+    # esta linha resolve e o caminho inverso — o container alcancar algo que
+    # roda no seu Windows (um MCP local, um script, um banco fora do compose).
+    # No Docker Desktop o nome ja existe; a linha e o que faz valer tambem em
+    # Docker nativo no Linux, quando isso for pra um VPS.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ------------------------------------------------------------------------ #
+  mcp:
+    build:
+      # Contexto na raiz do repo para o mount de src/backend fazer sentido.
+      context: ..
+      dockerfile: .docker/mcp.Dockerfile
+    image: sabor-da-maria-mcp:local
+    container_name: sabor-da-maria-mcp
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    env_file:
+      - ../.env
+
+    environment:
+      # Mesma correcao do Hermes: DB_HOST no .env vale para o host, nao para
+      # dentro da rede do compose.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      TZ: America/Sao_Paulo
+
+    volumes:
+      # Codigo por bind mount, nao copiado na imagem: editar server.py e dar
+      # `restart mcp` recarrega em segundos, sem rebuild. Somente leitura —
+      # o servidor nao tem por que escrever no proprio codigo.
+      - ../src/backend:/app:ro
+
+    networks:
+      - sabor
+
+    # A porta NAO e publicada. Quem consome e o container do Hermes, pela rede
+    # interna. Publicar no host so aumentaria superficie: e um endpoint sem
+    # autenticacao que le e (nas proximas etapas) escreve no banco.
+    expose:
+      - "8000"
+
+    healthcheck:
+      # Bate em /saude, nao em /mcp nem em /gate.
+      #
+      #   /mcp   recusa GET simples (so aceita POST JSON-RPC ou GET com
+      #          Accept: text/event-stream) e enchia o log de "ASGI callable
+      #          returned without completing response" a cada 5s.
+      #
+      #   /gate  consulta `pratos`. Num banco recem-criado a tabela ainda nao
+      #          existe, e o healthcheck falhava para sempre — saude do
+      #          servico nao pode depender de estado de negocio.
+      #
+      # /saude faz `SELECT 1`: prova HTTP e conexao com o banco, sem depender
+      # de tabela nenhuma.
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/saude | grep -q ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
 volumes:
   pgdata:
     name: sabor-da-maria-pgdata
+
+networks:
+  # Rede nomeada em vez da default do projeto: o `--delete` do runner precisa
+  # saber o que remover, e um nome fixo torna isso deterministico.
+  sabor:
+    name: sabor-da-maria-net
+    driver: bridge

@@ -27,6 +27,7 @@ __all__ = [
     "Cenario",
     "calcular_cmv",
     "preco_minimo",
+    "preco_por_alvo",
     "lucro",
     "montar_cenarios",
 ]
@@ -140,6 +141,28 @@ def lucro(preco: Decimal, cmv: Decimal, taxa: Decimal = TAXA_PLATAFORMA) -> Deci
     Decimal('17.09')
     """
     return _reais(preco * (Decimal("1") - taxa) - cmv)
+
+
+def preco_por_alvo(cmv: Decimal, fatia_comida: Decimal) -> Decimal:
+    """Preco em que a comida representa `fatia_comida` do que o cliente paga.
+
+    E a conta que a Dona Maria entende sem formula: se ela quer que a comida
+    seja 30% do preco, o preco e a comida dividida por 0,30. A taxa da
+    plataforma nao entra aqui — ela e outra fatia do MESMO bolo:
+
+        100%  o cliente paga
+        -10%  taxa da plataforma
+        -30%  a comida
+        ----
+         60%  sobra para ela
+
+    Arredonda para cima pelo mesmo motivo do `preco_minimo`: para baixo, a
+    comida passaria de 30% do preco e o alvo deixaria de valer.
+
+    >>> preco_por_alvo(Decimal("5.16"), Decimal("0.30"))
+    Decimal('17.20')
+    """
+    return (cmv / fatia_comida).quantize(_CENTAVO, rounding=ROUND_CEILING)
 
 
 @dataclass(frozen=True)
