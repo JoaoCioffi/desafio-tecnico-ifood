@@ -691,6 +691,8 @@ class Pulsando:
     """
 
     def __init__(self, texto: str) -> None:
+        # `texto` e reatribuivel de fora: o laco le a cada quadro, entao quem
+        # esta trabalhando pode dizer o que esta fazendo sem parar o pulso.
         self.texto = texto
         self.parar = False
 
@@ -856,6 +858,84 @@ def compose(*args: str, check: bool = True, interativo: bool = False):
         bruto = (proc.stderr or proc.stdout or "docker compose falhou").strip()
         raise RuntimeError(redigir(bruto)[:500])
     return proc
+
+
+# "1.2GB/3.4GB", "539.9kB / 53.65MB". Deliberadamente solto: casa o par de
+# tamanhos onde quer que esteja na linha, em vez de exigir o formato inteiro.
+# O texto ao redor ja mudou entre versoes do Docker; o par nao. Quem converte
+# cada metade e o `_bytes`, que ja sabe que o Docker mistura kB com KiB.
+_TAMANHOS = re.compile(r"([\d.]+\s*[A-Za-z]*B)\s*/\s*([\d.]+\s*[A-Za-z]*B)")
+
+# As duas fases que reportam tamanho, na ordem em que acontecem.
+_FASES = (("Downloading", "baixando imagens"), ("Extracting", "extraindo camadas"))
+
+
+def _par_de_bytes(texto: str) -> tuple[float, float] | None:
+    """'... 539.9kB/53.65MB' -> (539900.0, 53650000.0). None se nao houver par."""
+    if not (achado := _TAMANHOS.search(texto)):
+        return None
+    return _bytes(achado.group(1)), _bytes(achado.group(2))
+
+
+def compose_narrado(pulso: Pulsando, *args: str) -> None:
+    """`docker compose` com a saida lida ao vivo, narrando no pulso.
+
+    O `compose()` normal captura tudo e so devolve no fim. Serve para comando
+    rapido; nao serve para o `up` depois de um `--delete`, quando ha alguns GB
+    de imagem para baixar e a do MCP para construir. A tela ficava parada
+    minutos a fio, com um relogio subindo como unico sinal de vida — e relogio
+    subindo e exatamente o que um processo travado tambem faz.
+
+    Soma os bytes por CAMADA, nao por linha: o Docker reimprime a mesma camada
+    a cada atualizacao, e somar as linhas contaria o mesmo download dezenas de
+    vezes. Guardar o ultimo par por id faz o total so andar para frente.
+
+    E separa download de extracao. As duas fases reportam `X/Y` no mesmo
+    formato e para a mesma camada, entao um dicionario so faria o total VOLTAR
+    quando a camada recem-baixada comecasse a extrair. Separadas, o rotulo
+    troca e o numero recomeca honestamente — extrair alguns GB tambem demora,
+    e congelar o painel ali seria trocar um silencio por outro.
+
+    Quando nada casa o padrao — build, criacao de container — mostra a ultima
+    linha util. Pior que o numero, melhor que o silencio, e nunca pior que o
+    comportamento antigo.
+    """
+    cmd = ["docker", "compose", "--env-file", str(ENV), "-f", str(COMPOSE),
+           "--progress", "plain", *args]
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+
+    fases: dict[str, dict[str, tuple[float, float]]] = {f: {} for f, _ in _FASES}
+    historico: list[str] = []
+
+    for linha in proc.stdout:
+        linha = redigir(linha.strip())
+        if not linha:
+            continue
+        historico.append(linha)
+
+        fase = next((f for f, _ in _FASES if f in linha), None)
+        par = _par_de_bytes(linha) if fase else None
+
+        if fase and par:
+            fases[fase][linha.split()[0]] = par
+            # A fase mais adiantada manda: assim que a primeira camada comeca a
+            # extrair, o rotulo troca, mesmo que outras ainda estejam baixando.
+            atual, rotulo = next((f, r) for f, r in reversed(_FASES) if fases[f])
+            feito = sum(f for f, _ in fases[atual].values())
+            total = sum(t for _, t in fases[atual].values())
+            pulso.texto = f"{rotulo}  {_humano(feito)} / {_humano(total)}"
+        elif any(fases.values()):
+            # Ja houve progresso com numero: nao volta para linha solta, senao
+            # o valor pisca e some a cada camada que termina.
+            continue
+        else:
+            pulso.texto = cortar(linha, max(20, largura() - 20))
+
+    if proc.wait() != 0:
+        raise RuntimeError(("\n".join(historico[-8:]) or "docker compose falhou")[:500])
 
 
 # .Name vem com barra na frente; e o primeiro campo para dar match por nome,
@@ -1562,8 +1642,10 @@ def carregar(variaveis: dict[str, str]) -> None:
 def subir(variaveis: dict[str, str], versao: str) -> None:
     global SUBIU
     SUBIU = True  # a partir daqui pode haver container de pe para derrubar
-    with Pulsando("subindo servicos"):
-        compose("up", "-d")
+    # Depois de um `--delete` nao ha imagem nenhuma: este `up` baixa alguns GB
+    # e constroi a do MCP. Por isso e o unico comando narrado do arquivo.
+    with Pulsando("subindo servicos") as pulso:
+        compose_narrado(pulso, "up", "-d")
 
     # Container sobrando de uma execucao anterior nao e recriado pelo `up -d`:
     # se estiver doente, fica doente, e a espera estoura sem dizer porque.
