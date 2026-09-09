@@ -67,44 +67,33 @@ só o runner precisa delas.
 
 ```Shell
 .
-├───.docker/                            # infra, perfis dos agentes e ferramentas de operação
+├───.docker/                            # infra, perfis dos agentes e operação
 │   ├───runner.py                       # sobe a stack, painel ao vivo e ETL da planilha
 │   ├───painel-mcp.py                   # dashboard do MCP: chamadas, latência e o gate
-│   ├───provar.py                       # sobe Postgres descartável e roda as provas
-│   ├───docker-compose.yaml             # 4 serviços; portas publicadas só em loopback
-│   ├───mcp.Dockerfile                  # imagem do servidor MCP
-│   ├───db.sql                          # 9 tabelas, 4 views, COMMENT em cada uma
-│   ├───db.prova.sql                    # 8 provas de esquema, em psql puro
-│   ├───db.integra.py                   # 24 verificações do repo, com concorrência
+│   ├───docker-compose.yaml             # Postgres, servidor MCP e os dois agentes
+│   ├───db.sql                          # o schema: 9 tabelas e 4 views, com COMMENT em cada
 │   ├───hermes-profile/                 # PERFIL DA DONA MARIA — versionado
-│   │   ├───config.base.yaml            # saída literal do wizard; dispensa refazê-lo
-│   │   ├───config.yaml                 # o delta: modelo, toolsets, MCP e hooks
-│   │   ├───SOUL.md                     # o papel e a persona do agente
+│   │   ├───config.yaml                 # modelo, toolsets, servidor MCP e hooks
+│   │   ├───SOUL.md                     # quem o agente é e como conduz a conversa
 │   │   ├───agent-hooks/
-│   │   │   └───gate-viabilidade.py     # o hook que bloqueia o aceite
-│   │   └───skills/
-│   │       ├───sabor-da-maria/         # 7 procedimentos, um por diretório
-│   │       ├───grounded-citations/     # preservada do Hermes
-│   │       └───blocked-page-recovery/  # preservada do Hermes
-│   ├───hermes-profile-cliente/         # PERFIL DO CLIENTE — mesma estrutura, menos tudo
-│   │   ├───config.yaml                 # 4 toolsets, 3 ferramentas
-│   │   └───SOUL.md                     # persona de balcão, não de assistente
+│   │   │   └───gate-viabilidade.py     # roda antes do aceite; pode bloquear
+│   │   └───skills/sabor-da-maria/      # 7 procedimentos, um por diretório
+│   ├───hermes-profile-cliente/         # PERFIL DO CLIENTE — 3 ferramentas, nada mais
 │   └───hermes-data*/                   # HERMES_HOME de cada agente — fora do git
 ├───src/backend/
-│   ├───domain/                         # Python puro, sem I/O — 56 exemplos de doctest
-│   │   ├───unidades.py                 # normalização, conversão e consolidação
-│   │   ├───precificacao.py             # CMV, taxa, preço mínimo e cenários
-│   │   └───viabilidade.py              # o gate como função pura
+│   ├───domain/                         # as regras de negócio, em Python puro e sem I/O
+│   │   ├───unidades.py                 # normaliza a planilha: pacote vs. medida
+│   │   ├───precificacao.py             # CMV, taxa do app, preço mínimo e margem
+│   │   └───viabilidade.py              # as regras que o gate aplica antes do aceite
 │   ├───mcp_server/
-│   │   ├───server.py                   # as 18 ferramentas + 3 rotas HTTP
-│   │   ├───repo.py                     # única camada que fala SQL
+│   │   ├───server.py                   # as 18 ferramentas, em FastMCP sobre HTTP
+│   │   ├───repo.py                     # única camada que fala SQL (psycopg)
 │   │   ├───observador.py               # telemetria do servidor, em anel de memória
 │   │   └───__main__.py                 # entrypoint: abre o pool e sobe o HTTP
 │   └───tests/                          # 79 testes com os valores reais da planilha
 ├───presentation/
-│   ├───sabor-da-maria-deck.html        # slide-deck da apresentação, 10 slides
-│   └───scenarios/
-│       └───scenario.md                 # roteiro da demo, passo a passo
+│   ├───sabor-da-maria-deck.html        # slide-deck da apresentação, 11 slides
+│   └───scenarios/scenario.md           # roteiro da demo, passo a passo
 ├───shared/                             # enunciado e planilha, como recebidos
 ├───.env.example                        # todas as variáveis, comentadas
 ├───pyproject.toml                      # config do pytest e dos doctests
@@ -113,17 +102,18 @@ só o runner precisa delas.
 
 ### Onde fica cada coisa
 
-| pergunta                                    | resposta                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------- |
-| Onde o servidor MCP é definido?            | `src/backend/mcp_server/server.py`                                              |
-| Onde as ferramentas são declaradas?        | mesmo arquivo, decorador`@mcp.tool`                                             |
-| Quais ferramentas cada agente enxerga?      | `mcp_servers.sabor.tools.include` no `config.yaml` de cada perfil             |
-| Onde o papel do agente é definido?         | `hermes-profile*/SOUL.md`                                                       |
-| Onde ficam os procedimentos?                | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                               |
-| Onde está o ETL da planilha?               | `runner.py`, função `carregar()`                                            |
-| Onde a garantia do aceite é aplicada?      | `config.yaml` → `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` |
-| Onde o SQL vive?                            | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                           |
-| Onde as regras de negócio são calculadas? | `src/backend/domain/` (puro) e views do `db.sql`                              |
+| pergunta                                  | resposta                                                                             |
+| ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| Que framework serve o MCP?                | `fastmcp>=4` no transporte `http` — Starlette e uvicorn por baixo, **não** é FastAPI |
+| Em que porta?                             | 8000 dentro do contêiner, publicada em `127.0.0.1:8765`                              |
+| Onde as ferramentas são declaradas?       | `src/backend/mcp_server/server.py`, decorador `@mcp.tool`                            |
+| Quais ferramentas cada agente enxerga?    | `mcp_servers.sabor.tools.include`, no `config.yaml` de cada perfil                   |
+| Onde o papel do agente é definido?        | `hermes-profile*/SOUL.md`                                                            |
+| Onde ficam os procedimentos?              | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                                    |
+| Onde está o ETL da planilha?              | `runner.py`, função `carregar()`                                                     |
+| Onde a garantia do aceite é aplicada?     | `config.yaml` → `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py`            |
+| Onde o SQL vive?                          | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                                  |
+| Onde as regras de negócio são calculadas? | `src/backend/domain/`, e as views do `db.sql`                                        |
 
 ---
 
@@ -358,7 +348,7 @@ prova acusar, com a mensagem certa.
 
 | documento                                                                         | conteúdo                                                |
 | --------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [`presentation/sabor-da-maria-deck.html`](presentation/sabor-da-maria-deck.html) | slide-deck da apresentação, 10 slides                  |
+| [`presentation/sabor-da-maria-deck.html`](presentation/sabor-da-maria-deck.html) | slide-deck da apresentação, 11 slides                  |
 | [`presentation/scenarios/scenario.md`](presentation/scenarios/scenario.md)       | roteiro da demo com o que esperar em cada passo          |
 | [`shared/desafio-senior-ai-engineer.md`](shared/desafio-senior-ai-engineer.md)   | o enunciado, como recebido                               |
 | `.docker/db.sql`                                                                | esquema com`COMMENT` em cada tabela e coluna relevante |
