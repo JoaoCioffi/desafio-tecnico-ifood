@@ -2,12 +2,12 @@
 
 <p align="center">
   <img src="docs/painel-runner.svg" width="49%" alt="runner.py — painel da stack: INFRA, HERMES e HARDWARE ao vivo">
-  &nbsp;
+   
   <img src="docs/painel-mcp.svg" width="49%" alt="painel-mcp.py — chamadas de ferramenta, decisões do gate e latência">
 </p>
 
 <p align="center">
-  <sub><b>runner.py</b> segura a stack e mostra o estado &nbsp;·&nbsp; <b>painel-mcp.py</b> mostra o que o agente pediu, o que voltou e o que o gate decidiu</sub>
+  <sub><b>runner.py</b> segura a stack e mostra o estado  ·  <b>painel-mcp.py</b> mostra o que o agente pediu, o que voltou e o que o gate decidiu</sub>
 </p>
 
 Agente de cardápio e precificação construído sobre o
@@ -26,7 +26,7 @@ um segundo bot simula o cliente comprando, e o caixa dela cresce.
 **Pré-requisitos:** Docker Desktop, Python 3.12+, chave de API de um provedor de LLM e
 dois bots do Telegram.
 
-```bash
+```Java
 pip install -r requirements.txt
 cp .env.example .env      # preencher as variáveis abaixo
 python .docker/runner.py
@@ -70,7 +70,7 @@ só o runner precisa delas.
 
 ## 2. Estrutura do projeto
 
-```text
+```Shell
 .
 ├───.docker/                            # infra, perfis dos agentes e ferramentas de operação
 │   ├───runner.py                       # sobe a stack, painel ao vivo e ETL da planilha
@@ -293,7 +293,7 @@ conflito de httpx), `cronjob`, `kanban`, `image_generate`, `text_to_speech`,
 
 Três blocos que redesenham no lugar: **INFRA**, **HERMES**, **HARDWARE**.
 
-```text
+```Java
   ↗ cpu  ▁▁▁▁▁▁▁▁▁▁▁▁▂▂▂▃▄▆██████▅▃▂▁▁▁    Ryzen 9 5900X • 12c/24t   0.72 %
 ```
 
@@ -308,7 +308,7 @@ todo texto que sai passa por `redigir()`.
 
 Aba separada, só leitura. `Ctrl+C` nela não encosta nos containers.
 
-```text
+```Rust
   FLUXO                                                    mais recente embaixo
    01:31:35.189  maria   • consultar_pedidos              3ms
                           in 0         out {2}     · 559 B
@@ -330,7 +330,7 @@ manda o último `seq` que tem e recebe só o delta.
 
 ## 5. Testes
 
-```text
+```Python
 pytest                      # 79 testes · 0,2s · sem Docker, sem rede, sem chave
 python .docker/provar.py    # 8 provas de esquema + 24 de integração
 ```
