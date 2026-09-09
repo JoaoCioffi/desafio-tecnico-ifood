@@ -2,11 +2,11 @@
 Sobe o Postgres e o Hermes juntos e SEGURA O TERMINAL.
 Os containers vivem enquanto o script viver: Ctrl+C derruba os dois.
 
-    python .docker/runner.py            # sobe tudo e segue os logs
+    python .docker/runner.py            # sobe tudo e segura o terminal no painel
     python .docker/runner.py --setup    # wizard do Hermes (rodar uma vez, antes)
     python .docker/runner.py --down     # derruba, preserva volume e imagens
     python .docker/runner.py --reset    # DESTROI o volume do banco
-    python .docker/runner.py --delete   # DESTROI containers, volume, rede e imagens
+    python .docker/runner.py --delete   # DESTROI tudo, inclusive os dados do agente
 
 A cada subida ele tambem aplica o perfil versionado no config do agente e
 carrega a planilha da Dona Maria no Postgres. Os dois passos sao idempotentes.
@@ -41,6 +41,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -57,6 +58,13 @@ ENV = RAIZ / ".env"
 DADOS_HERMES = AQUI / "hermes-data"      # dados do agente — fora do git
 PERFIL = AQUI / "hermes-profile" / "config.yaml"  # delta versionado
 BASELINE = AQUI / "hermes-profile" / "config.base.yaml"  # config completa do wizard
+
+# O segundo agente: o balcao do "Bora Pedir". HERMES_HOME proprio porque a
+# doc do Hermes e categorica — "never point two agent processes at the same
+# profile"; escrita concorrente corrompe a memoria compartilhada. A BASELINE
+# e a mesma: o que muda entre os dois e o delta, nao a instalacao.
+DADOS_CLIENTE = AQUI / "hermes-data-cliente"
+PERFIL_CLIENTE = AQUI / "hermes-profile-cliente" / "config.yaml"
 ESQUEMA = AQUI / "db.sql"
 PLANILHA = RAIZ / "shared" / "despensa_dona_maria.xlsx"
 
@@ -64,6 +72,28 @@ PLANILHA = RAIZ / "shared" / "despensa_dona_maria.xlsx"
 ORCAMENTO_INICIAL = Decimal("80.00")
 
 PROJETO = "sabor-da-maria"
+
+# Cabecalho do painel. Cru, sem cor e sem margem: quem desenha decide as duas.
+#
+# String RAW de proposito — a arte e feita de barras invertidas, e `\_` ou `\/`
+# num literal normal e sequencia de escape invalida. Hoje o Python so avisa;
+# a partir da 3.12 o aviso vira erro de sintaxe.
+BANNER = r"""
+  _   ____        _                      _         __  __            _         _
+ | | / ___|  __ _| |__   ___  _ __    __| | __ _  |  \/  | __ _ _ __(_) __ _  | |
+ | | \___ \ / _` | '_ \ / _ \| '__|  / _` |/ _` | | |\/| |/ _` | '__| |/ _` | | |
+ | |  ___) | (_| | |_) | (_) | |    | (_| | (_| | | |  | | (_| | |  | | (_| | | |
+ | | |____/ \__,_|_.__/ \___/|_|     \__,_|\__,_| |_|  |_|\__,_|_|  |_|\__,_| | |
+ |_|                                                                          |_|
+"""[1:-1].split("\n")
+
+LEGENDA = "docker compose telemetry"
+
+# Os dois comandos que valem estar a vista de quem esta olhando o painel.
+# `--down` e redundante (o Ctrl+C ja faz, e o rodape diz) e `--reset` e um
+# subconjunto de `--delete`; listar os quatro viraria menu, nao dica.
+COMANDOS = (("--setup", "reconfigura pelo wizard"),
+            ("--delete", "apaga tudo e recomeca do zero"))
 VOLUME = "sabor-da-maria-pgdata"
 REDE = "sabor-da-maria-net"
 # O MCP entra como servico monitorado, mas NAO ganha bloco proprio: o painel
@@ -71,6 +101,7 @@ REDE = "sabor-da-maria-net"
 # do agente, entao aparece como linha dentro de INFRA.
 CONTAINERS = {"postgres": "sabor-da-maria-db",
               "hermes": "sabor-da-maria-hermes",
+              "cliente": "sabor-da-maria-cliente",
               "mcp": "sabor-da-maria-mcp"}
 
 # Sem estas o compose sobe com string vazia e o erro so aparece la na frente,
@@ -143,15 +174,16 @@ def _imprimivel(texto: str) -> bool:
 if _imprimivel("✓✗•⠋…▁█↗→↘"):
     OK, FALHA, PONTO, CORTE = "✓", "✗", "•", "…"
     GIRO = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    # Quatro barras crescentes, todas na mesma linha de base: sinal de wifi.
-    # Sao quatro porque 4 divide 100 em 25/50/75 — os mesmos cortes das cores,
-    # entao a altura e a cor contam sempre a mesma historia.
-    NIVEIS = "▂▄▆█"
+    # Oito alturas de bloco, todas assentadas na mesma linha de base: uma
+    # amostra por coluna desenha a curva do historico.
+    NIVEIS = "▁▂▃▄▅▆▇█"
     SOBE, IGUAL, DESCE = "↗", "→", "↘"
 else:
     OK, FALHA, PONTO, CORTE = "+", "x", "*", "~"
     GIRO = "|/-\\"
-    NIVEIS = ".-=+"
+    # Rampa de tinta crescente. Nao ha altura em ASCII, entao a leitura vira
+    # densidade — pior, mas so aparece em console que nao aceita UTF-8.
+    NIVEIS = "._-=+*#@"
     SOBE, IGUAL, DESCE = "^", "=", "v"
 
 # Pulso do npm install: um ponto que anda enquanto algo sobe.
@@ -184,9 +216,22 @@ def redigir(texto: str) -> str:
 
 
 class Serie:
-    """Historico curto de uma metrica: vira sparkline e seta de tendencia."""
+    """Historico curto de uma metrica: vira curva e seta de tendencia."""
 
-    def __init__(self, tamanho: int = 12) -> None:
+    # Amplitude minima da janela de desenho, em pontos percentuais.
+    #
+    # Sem ela, uma serie parada faria max == min e a divisao estouraria. Com
+    # ela, uma serie parada ocupa um degrau so, e o ruido de centesimo que
+    # existe em toda leitura de CPU nao vira montanha. O numero e o preco
+    # dessa escolha: variacao menor que 1 ponto percentual e desenhada como
+    # menor que a altura cheia, em vez de preencher o grafico.
+    PISO = 1.0
+
+    def __init__(self, tamanho: int = 60) -> None:
+        # Guarda mais do que costuma caber na tela: a largura do desenho sai
+        # do terminal, que pode ser largo, e sobra vira historico descartado
+        # na hora de desenhar, em vez de amostra que nunca foi coletada.
+        # A 3s por amostra, 60 sao tres minutos.
         self._valores: deque[float] = deque(maxlen=tamanho)
 
     def anotar(self, valor: float | None) -> None:
@@ -197,39 +242,109 @@ class Serie:
     def atual(self) -> float | None:
         return self._valores[-1] if self._valores else None
 
-    def sinal(self) -> tuple[str, str]:
-        """Medidor de nivel, estilo barra de sinal: (acesas, apagadas).
+    def _escala(self, valores: list[float]) -> tuple[float, float]:
+        """Janela vertical do desenho: o proprio min/max, nunca menor que PISO.
 
-        Trocou o sparkline de historico porque ele nao servia para o que se
-        olha aqui. Numa escala fixa de 0 a 100% a CPU vive perto do chao, e
-        oito barrinhas identicas em `▁` nao informam nada — a linha virava
-        enfeite. O medidor responde a pergunta certa: quanto do teto ja foi.
+        Aqui esta a diferenca em relacao ao medidor que havia antes. Numa
+        escala fixa de 0 a 100 a maquina ociosa vive colada no chao: CPU a
+        0,3% e CPU a 0,9% desenham identicas, e a linha vira enfeite. Contra
+        o proprio historico, 0,3 e 0,9 ficam a degraus de distancia e da para
+        ver a maquina respirar.
 
-        Vem partido em duas metades para o desenho pintar cada uma de uma
-        cor; juntar aqui exigiria devolver escape de cor no meio do texto, e
-        aquilo contaria como caractere visivel no alinhamento da coluna.
+        O preco e que a altura passa a ser relativa: curva cheia significa
+        "variou o maximo que variou nestes tres minutos", nao "esta cheio". A
+        COR carrega o absoluto (`cor_faixa`, sobre o valor de agora) e o
+        numero ao lado da a leitura exata. Sao tres perguntas diferentes, e
+        cada uma tem seu canal.
+
+        O chao da janela e sempre o MENOR valor do historico; o piso so
+        levanta o teto. E o que faz serie parada desenhar rente ao chao em vez
+        de virar uma parede na meia altura: sem isso, um disco cravado em
+        0,55% ficaria identico a um disco em 50%, e a linha mentiria com todas
+        as letras.
+
+        >>> def serie(*v):
+        ...     s = Serie()
+        ...     for x in v:
+        ...         s.anotar(x)
+        ...     return s
+        >>> serie()._escala([0.55, 0.55, 0.55])       # parada: o piso levanta o teto
+        (0.55, 1.55)
+        >>> serie()._escala([2.0, 40.0, 91.0])        # variou: manda o proprio min/max
+        (2.0, 91.0)
         """
-        valor = self.atual
-        acesas = (max(1, min(len(NIVEIS), int(valor / 100 * len(NIVEIS)) + 1))
-                  if valor is not None else 0)
+        lo, hi = min(valores), max(valores)
+        if hi - lo < self.PISO:
+            hi = lo + self.PISO
+        return lo, hi
 
-        # As quatro barras aparecem SEMPRE; o que muda e quais estao acesas.
-        # Trocar a apagada por outro glifo (ponto, espaco) quebra o desenho:
-        # o ponto flutua no meio da celula enquanto o bloco senta na base, e
-        # a barra fica torta.
-        #
-        return NIVEIS[:acesas], NIVEIS[acesas:]
+    def curva(self, largura: int) -> str:
+        """As ultimas `largura` amostras, uma coluna cada, mais nova a direita.
+
+        A guarda do zero nao e defensiva, e necessaria: `lista[-0:]` e
+        `lista[0:]`, ou seja, a lista TODA. Sem ela, pedir zero coluna devolve
+        o historico inteiro, e `f"{s:>0}"` nao trunca nada — o painel
+        imprimia sessenta blocos justamente no terminal estreito onde a curva
+        deveria ter sumido.
+
+        Os exemplos comparam INDICES em NIVEIS, nao os glifos: o alfabeto do
+        desenho muda conforme o console aceite UTF-8, e um doctest preso ao
+        bloco Unicode quebraria no console que caiu no ASCII.
+
+        >>> def serie(*v):
+        ...     s = Serie()
+        ...     for x in v:
+        ...         s.anotar(x)
+        ...     return s
+        >>> serie(1, 2, 3).curva(0)                   # sem espaco, nada desenhado
+        ''
+        >>> serie().curva(10)                         # antes da primeira coleta
+        ''
+        >>> [NIVEIS.index(c) for c in serie(0, 20, 40, 60, 80, 100).curva(6)]
+        [0, 1, 3, 4, 6, 7]
+        >>> [NIVEIS.index(c) for c in serie(*[0.55] * 4).curva(4)]
+        [0, 0, 0, 0]
+        >>> len(serie(*range(50)).curva(12))          # so as ultimas que cabem
+        12
+        """
+        if largura <= 0:
+            return ""
+        valores = list(self._valores)[-largura:]
+        if not valores:
+            return ""
+        lo, hi = self._escala(valores)
+        degrau = (hi - lo) / len(NIVEIS)
+        return "".join(
+            NIVEIS[max(0, min(len(NIVEIS) - 1, int((v - lo) / degrau)))]
+            for v in valores
+        )
 
     def tendencia(self) -> str:
-        """Seta contra a leitura anterior, com zona morta.
+        """Seta do valor de agora contra a MEDIA do historico, com zona morta.
 
-        Sem a zona morta a seta pisca a cada quadro por causa de ruido de
-        centesimo de por cento, e vira barulho em vez de informacao.
+        Comparar so com a leitura anterior parece o obvio e erra nos dois
+        extremos. Numa rampa lenta cada passo e minusculo, entao a seta fica
+        congelada em `→` enquanto a curva desenha uma escada evidente. E logo
+        depois de um pico, as duas ultimas amostras ja empataram no chao e a
+        seta perde a descida inteira.
+
+        Contra a media, a pergunta vira "estou acima ou abaixo de onde tenho
+        estado", que e o que a seta ao lado de um historico deveria responder.
+        A rampa acusa desde o comeco, e a queda depois de um pico acusa `↘`
+        na descida e volta a `→` quando a leitura assenta — a montanha
+        continua desenhada na curva, mas ja nao e novidade.
+
+        A zona morta acompanha a escala do desenho em vez de ser um numero
+        fixo em pontos percentuais: a seta mexe quando a curva mexeria
+        tambem. Fixa, ficaria travada exatamente nas metricas que vivem perto
+        do chao — as que esta escala movel existe para tornar legiveis.
         """
-        if len(self._valores) < 2:
+        valores = list(self._valores)
+        if len(valores) < 2:
             return IGUAL
-        delta = self._valores[-1] - self._valores[-2]
-        if abs(delta) < 0.5:
+        lo, hi = self._escala(valores)
+        delta = valores[-1] - sum(valores) / len(valores)
+        if abs(delta) < (hi - lo) / len(NIVEIS):
             return IGUAL
         return SOBE if delta > 0 else DESCE
 
@@ -584,6 +699,8 @@ class Pulsando:
     """
 
     def __init__(self, texto: str) -> None:
+        # `texto` e reatribuivel de fora: o laco le a cada quadro, entao quem
+        # esta trabalhando pode dizer o que esta fazendo sem parar o pulso.
         self.texto = texto
         self.parar = False
 
@@ -695,7 +812,7 @@ def exigir_docker() -> str:
     return proc.stdout.strip() or "?"
 
 
-def semear_baseline() -> bool:
+def semear_baseline(dados: Path = DADOS_HERMES) -> bool:
     """Planta a config completa do wizard quando nao ha nenhuma. Devolve se plantou.
 
     E o que dispensa o wizard num clone limpo. O delta sozinho nao basta:
@@ -708,21 +825,26 @@ def semear_baseline() -> bool:
     manda no config.yaml e o par (agente, delta), nao este arquivo.
     """
     global CONFIG_ORIGEM
-    if hermes_configurado():
-        CONFIG_ORIGEM = "reaproveitada de hermes-data"
+    # O painel so reporta a origem do perfil PRINCIPAL: a linha diz "config"
+    # no bloco HERMES, e duas origens ali confundiriam mais do que informam.
+    principal = dados == DADOS_HERMES
+    if hermes_configurado(dados):
+        if principal:
+            CONFIG_ORIGEM = "reaproveitada de hermes-data"
         return False
     if not BASELINE.is_file():
         return False
-    DADOS_HERMES.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(BASELINE, DADOS_HERMES / "config.yaml")
-    CONFIG_ORIGEM = f"semeada de {BASELINE.name} {D}·{R} wizard dispensado"
+    dados.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(BASELINE, dados / "config.yaml")
+    if principal:
+        CONFIG_ORIGEM = f"semeada de {BASELINE.name} {D}·{R} wizard dispensado"
     return True
 
 
-def hermes_configurado() -> bool:
+def hermes_configurado(dados: Path = DADOS_HERMES) -> bool:
     """O `gateway run` exige um config.yaml. Sem ele o container entra em
     crash loop e o `restart: unless-stopped` esconde o motivo repetindo."""
-    return (DADOS_HERMES / "config.yaml").is_file()
+    return (dados / "config.yaml").is_file()
 
 
 # --------------------------------------------------------------------------- #
@@ -749,6 +871,118 @@ def compose(*args: str, check: bool = True, interativo: bool = False):
         bruto = (proc.stderr or proc.stdout or "docker compose falhou").strip()
         raise RuntimeError(redigir(bruto)[:500])
     return proc
+
+
+# "1.2GB/3.4GB", "539.9kB / 53.65MB". Deliberadamente solto: casa o par de
+# tamanhos onde quer que esteja na linha, em vez de exigir o formato inteiro.
+# O texto ao redor ja mudou entre versoes do Docker; o par nao. Quem converte
+# cada metade e o `_bytes`, que ja sabe que o Docker mistura kB com KiB.
+_TAMANHOS = re.compile(r"([\d.]+\s*[A-Za-z]*B)\s*/\s*([\d.]+\s*[A-Za-z]*B)")
+
+# As duas fases que reportam tamanho, na ordem em que acontecem.
+_FASES = (("Downloading", "baixando imagens"), ("Extracting", "extraindo camadas"))
+
+
+def _par_de_bytes(texto: str) -> tuple[float, float] | None:
+    """'... 539.9kB/53.65MB' -> (539900.0, 53650000.0). None se nao houver par."""
+    if not (achado := _TAMANHOS.search(texto)):
+        return None
+    return _bytes(achado.group(1)), _bytes(achado.group(2))
+
+
+# O que o registry devolve quando o problema e a rede, nao a configuracao.
+# So estes reexecutam: "pull access denied", "manifest unknown" ou "no space
+# left" sao definitivos, e repeti-los seria so demorar mais para dar o mesmo
+# erro — pior, escondendo a causa atras de tres tentativas.
+_TRANSITORIO = re.compile(
+    r"TLS handshake timeout|i/o timeout|connection reset|unexpected EOF"
+    r"|temporary failure|dial tcp|timeout awaiting|context deadline exceeded"
+    r"|500 Internal Server Error|502 Bad Gateway|503 Service Unavailable",
+    re.IGNORECASE,
+)
+
+
+def _rodar_narrado(pulso: Pulsando, args: tuple[str, ...]) -> tuple[int, list[str]]:
+    """Uma passada do compose, narrando no pulso. Devolve (codigo, saida)."""
+    cmd = ["docker", "compose", "--env-file", str(ENV), "-f", str(COMPOSE),
+           "--progress", "plain", *args]
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+
+    fases: dict[str, dict[str, tuple[float, float]]] = {f: {} for f, _ in _FASES}
+    historico: list[str] = []
+
+    for linha in proc.stdout:
+        linha = redigir(linha.strip())
+        if not linha:
+            continue
+        historico.append(linha)
+
+        fase = next((f for f, _ in _FASES if f in linha), None)
+        par = _par_de_bytes(linha) if fase else None
+
+        if fase and par:
+            fases[fase][linha.split()[0]] = par
+            # A fase mais adiantada manda: assim que a primeira camada comeca a
+            # extrair, o rotulo troca, mesmo que outras ainda estejam baixando.
+            atual, rotulo = next((f, r) for f, r in reversed(_FASES) if fases[f])
+            feito = sum(f for f, _ in fases[atual].values())
+            total = sum(t for _, t in fases[atual].values())
+            pulso.texto = f"{rotulo}  {_humano(feito)} / {_humano(total)}"
+        elif any(fases.values()):
+            # Ja houve progresso com numero: nao volta para linha solta, senao
+            # o valor pisca e some a cada camada que termina.
+            continue
+        else:
+            pulso.texto = cortar(linha, max(20, largura() - 20))
+
+    return proc.wait(), historico
+
+
+def compose_narrado(pulso: Pulsando, *args: str, tentativas: int = 3) -> None:
+    """`docker compose` com a saida lida ao vivo, narrando no pulso.
+
+    O `compose()` normal captura tudo e so devolve no fim. Serve para comando
+    rapido; nao serve para o `up` depois de um `--delete`, quando ha alguns GB
+    de imagem para baixar e a do MCP para construir. A tela ficava minutos
+    parada com um relogio subindo — que e exatamente o que um processo travado
+    tambem faz.
+
+    Soma os bytes por CAMADA, nao por linha: o Docker reimprime a mesma camada
+    a cada atualizacao, e somar as linhas contaria o mesmo download dezenas de
+    vezes. Guardar o ultimo par por id faz o total so andar para frente.
+
+    E separa download de extracao. As duas fases reportam `X/Y` no mesmo
+    formato e para a MESMA camada, entao um dicionario so faria o total VOLTAR
+    quando a camada recem-baixada comecasse a extrair.
+
+    Repete quando a falha e de rede. Um `TLS handshake timeout` no fim de tres
+    minutos de download derrubava a subida inteira, e a acao obvia era
+    justamente aquela que o runner nao fazia: rodar de novo. O `up` reconcilia
+    o que ja existe, entao repetir nao duplica nada, e as camadas ja baixadas
+    ficam no cache do Docker — a segunda tentativa comeca de onde a primeira
+    parou, nao do zero.
+
+    Falha que nao e de rede sobe na primeira: insistir em "pull access denied"
+    so demora mais para dar o mesmo erro, escondendo a causa.
+    """
+    for tentativa in range(1, tentativas + 1):
+        codigo, historico = _rodar_narrado(pulso, args)
+        if codigo == 0:
+            return
+
+        cauda = "\n".join(historico[-8:]) or "docker compose falhou"
+        ultima = tentativa == tentativas
+        if ultima or not _TRANSITORIO.search(cauda):
+            quantas = f" (apos {tentativa} tentativas)" if tentativa > 1 else ""
+            raise RuntimeError(f"{cauda[:500]}{quantas}")
+
+        espera = 3 * tentativa
+        pulso.texto = (f"a rede falhou, repetindo em {espera}s  "
+                       f"tentativa {tentativa + 1} de {tentativas}")
+        time.sleep(espera)
 
 
 # .Name vem com barra na frente; e o primeiro campo para dar match por nome,
@@ -925,22 +1159,23 @@ def bloco_infra(estados: dict[str, dict], tel: Telemetria,
 # --------------------------------------------------------------------------- #
 # HERMES
 # --------------------------------------------------------------------------- #
-def estado_gateway() -> dict:
+def estado_gateway(dados: Path = DADOS_HERMES) -> dict:
     """Le o gateway_state.json do bind mount.
 
     Sai de graca: o arquivo esta no disco do host, entao nao custa um
     `docker exec` por quadro. E e a unica fonte que sabe se o Telegram esta
     conectado — o container estar `running` nao diz nada sobre isso.
     """
-    alvo = DADOS_HERMES / "gateway_state.json"
+    alvo = dados / "gateway_state.json"
     try:
         return json.loads(alvo.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
-def bloco_hermes(info: dict[str, str], tel: Telemetria,
-                 variaveis: dict[str, str], quadro: int) -> list[str]:
+def bloco_hermes(info: dict[str, str], cliente: dict[str, str] | None,
+                 tel: Telemetria, variaveis: dict[str, str],
+                 quadro: int) -> list[str]:
     linhas = [titulo("HERMES", info, quadro)]
     if info["status"] != "running":
         return linhas
@@ -958,6 +1193,21 @@ def bloco_hermes(info: dict[str, str], tel: Telemetria,
             partes.append(f"{cor}{nome} {dados.get('state', '?')}{R}")
         linhas.append(campo("gateway", f"{estado.get('gateway_state', '?')} {D}·{R} "
                                        + f" {D}·{R} ".join(partes)))
+    # O segundo agente entra como LINHA, nao como bloco: o painel tem tres
+    # blocos e essa regra vale mais que a simetria. Aqui interessa so se ele
+    # esta de pe e se o Telegram dele conectou — o resto do que ele faz aparece
+    # no banco, que e onde os dois se encontram.
+    if cliente is not None:
+        if cliente["status"] == "running":
+            tg = estado_gateway(DADOS_CLIENTE).get("platforms", {}).get("telegram", {})
+            liga = tg.get("state", "conectando…")
+            cor = VERDE if liga == "connected" else AMAR
+            estado_txt = f"{VERDE}no ar{R} {D}·{R} {cor}telegram {liga}{R}"
+        else:
+            estado_txt = f"{AMAR}{cliente['status']}{R}"
+        linhas.append(campo("cliente", f"{estado_txt} {D}· bot do cliente, "
+                                       f"toolset proprio{R}"))
+
     ag = tel.agente
     if tel.modelo:
         # O modelo em uso pode divergir do configurado: um /model no meio da
@@ -1013,12 +1263,28 @@ def _mil(n: float) -> str:
     return f"{n / 1000:.0f}k" if n >= 1000 else str(int(n))
 
 
-def linha_metrica(nome: str, serie: Serie, texto: str, coluna: int) -> str:
+# Tudo que a linha gasta fora da curva: margem, seta, nome, os dois espacos
+# antes do texto, o texto e o percentual. Sai daqui a largura que sobra para
+# o desenho — cravar um numero faria a curva vazar ou sobrar buraco conforme
+# o terminal.
+_FIXO_METRICA = 2 + 1 + 1 + 5 + 2 + 1 + 8
+
+
+def linha_metrica(nome: str, serie: Serie, texto: str, coluna: int, curva: int) -> str:
     valor = serie.atual
     cor = cor_faixa(valor)
-    acesas, apagadas = serie.sinal()
-    numero = f"{valor:.1f} %" if valor is not None else "—"
-    return (f"  {serie.tendencia()} {D}{nome:<6}{R}{cor}{acesas}{R}{D}{apagadas}{R}  "
+    # Duas casas porque a maquina nunca esta exatamente parada: com uma casa,
+    # tudo abaixo de 0,05% vira "0.0 %" e a coluna toda mente junto.
+    numero = f"{valor:.2f} %" if valor is not None else "—"
+    # A curva inteira na cor do valor de AGORA. Pintar cada coluna pela
+    # propria leitura seria mais fiel e ilegivel: dezenas de trocas de cor por
+    # linha, e o painel deixaria de ser painel.
+    desenho = serie.curva(curva)
+    # Alinhada a DIREITA: a amostra de agora fica cravada sempre na mesma
+    # coluna e o historico cresce para tras. A esquerda, a borda do presente
+    # andaria para o lado durante os tres primeiros minutos, e o olho leria
+    # movimento onde so ha buffer enchendo.
+    return (f"  {serie.tendencia()} {D}{nome:<5}{R}{cor}{desenho:>{curva}}{R}  "
             f"{texto:>{coluna}} {cor}{numero:>8}{R}")
 
 
@@ -1039,13 +1305,59 @@ def bloco_hardware(tel: Telemetria) -> list[str]:
     # empurraria o percentual para fora do lugar em uma das duas.
     coluna = max(len(t) for _, _, t in metricas)
 
-    # Linha em branco entre as metricas: as barras sao blocos altos e, coladas
-    # verticalmente, formam uma parede continua onde nao se distingue onde uma
-    # medida termina e a outra comeca.
-    linhas = [f"  {B}HARDWARE{R}"]
+    # A curva come o que sobrar da linha, ate um teto de 60 — mais que isso
+    # vira uma faixa larga demais para o olho seguir em tela cheia.
+    #
+    # E some inteira quando sobra pouco. Um piso aqui empurraria a linha para
+    # fora da tela, e quem corta e o `cortar`, que corta pela direita: morreria
+    # o percentual para salvar tres blocos sem forma. A curva e a parte
+    # descartavel desta linha; o numero nao e.
+    curva = min(60, largura() - _FIXO_METRICA - coluna)
+    if curva < 6:
+        curva = 0
+
+    # As linhas voltam a ficar coladas: as colunas agora tem alturas diferentes
+    # e cada serie ja se le como uma forma propria. Era a barra chapada de
+    # antes, repetida identica em toda linha, que precisava do respiro.
+    linhas = [f"  {B}HARDWARE{R}", ""]
     for nome, serie, texto in metricas:
-        linhas += ["", linha_metrica(nome, serie, texto, coluna)]
+        linhas.append(linha_metrica(nome, serie, texto, coluna, curva))
     return linhas
+
+
+def cabecalho(versao: str) -> list[str]:
+    """O banner, ou uma linha so quando ele nao cabe.
+
+    O `cortar` do painel corta pela direita, e arte ASCII cortada pela direita
+    nao degrada: vira lixo. Entao a decisao e aqui, antes de desenhar — cabe
+    inteiro ou nao aparece.
+
+    A legenda e centrada sobre a largura do banner em vez de vir com os
+    espacos ja contados. A versao da engine entra no meio dela e muda de
+    tamanho conforme a maquina; indentacao cravada descentraria sozinha na
+    primeira maquina com outra versao do Docker.
+    """
+    legenda = f"{LEGENDA} · engine {versao}"
+    largura_banner = max(len(l) for l in BANNER)
+
+    if largura() < largura_banner:
+        return [f"  {B}{PROJETO}{R} {D}· {legenda}{R}",
+                "  " + "  ".join(f"{f} {D}{t}{R}" for f, t in COMANDOS)]
+
+    # Arredonda para CIMA quando a sobra e impar: com 81 de banner e 40 de
+    # legenda sobram 41 colunas, e meio caractere nao existe. Para cima, a
+    # legenda encosta na perna direita do banner em vez de flutuar solta.
+    recuo = " " * ((largura_banner - len(legenda) + 1) // 2)
+
+    # O recuo sai do texto SEM cor. Centrar sobre a string ja pintada contaria
+    # os escapes ANSI como caractere visivel e jogaria a linha para a esquerda
+    # — quanto mais cor, mais torta.
+    ajuda = "   ·   ".join(f"{f} {t}" for f, t in COMANDOS)
+    pintada = "   ·   ".join(f"{f} {D}{t}{R}" for f, t in COMANDOS)
+    recuo_ajuda = " " * max(0, (largura_banner - len(ajuda) + 1) // 2)
+
+    return [*(f"{B}{l}{R}" for l in BANNER), "",
+            f"{D}{recuo}{legenda}{R}", f"{recuo_ajuda}{pintada}"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1070,11 +1382,12 @@ def monitorar(variaveis: dict[str, str], versao: str, timeout: int = 120) -> Non
 
             corpo = [
                 "",
-                f"  {B}{PROJETO}{R} {D}· docker compose · engine {versao}{R}",
+                *cabecalho(versao),
                 "",
                 *bloco_infra(estados, tel, variaveis, quadro),
                 "",
-                *bloco_hermes(estados["hermes"], tel, variaveis, quadro),
+                *bloco_hermes(estados["hermes"], estados.get("cliente"),
+                              tel, variaveis, quadro),
                 "",
                 *bloco_hardware(tel),
             ]
@@ -1167,8 +1480,9 @@ def fundir(base: dict, novo: dict, prefixo: str = "") -> tuple[dict, list[str]]:
     return saida, mudancas
 
 
-def instalar_arquivos_do_perfil() -> None:
-    """Copia tudo que nao seja o config.yaml de hermes-profile/ para hermes-data/.
+def instalar_arquivos_do_perfil(perfil: Path = PERFIL,
+                                dados: Path = DADOS_HERMES) -> None:
+    """Copia tudo que nao seja o config.yaml do perfil para o HERMES_HOME.
 
     O Hermes le SOUL.md, skills/ e agent-hooks/ do HERMES_HOME, nunca de um
     repositorio. Sem este passo, versionar esses arquivos nao teria efeito
@@ -1180,27 +1494,29 @@ def instalar_arquivos_do_perfil() -> None:
     no menu de comandos do Telegram, que o Hermes limita a 60: com 58 skills
     de fabrica, as NOSSAS podem simplesmente nao caber.
     """
-    origem = PERFIL.parent
+    origem = perfil.parent
     if not origem.is_dir():
         return
 
-    (DADOS_HERMES / ".no-bundled-skills").touch()
+    dados.mkdir(parents=True, exist_ok=True)
+    (dados / ".no-bundled-skills").touch()
 
     for item in origem.iterdir():
-        if item.name in (PERFIL.name, BASELINE.name):
+        if item.name in (perfil.name, BASELINE.name):
             # Os dois arquivos de config tem caminho proprio: a baseline e
             # semeada por semear_baseline(), o delta e fundido por
             # aplicar_perfil(). Copiar qualquer um aqui so deixaria uma copia
             # morta em hermes-data, que ninguem le e todo mundo confunde.
             continue
-        destino = DADOS_HERMES / item.name
+        destino = dados / item.name
         if item.is_dir():
             shutil.copytree(item, destino, dirs_exist_ok=True)
         else:
             shutil.copy2(item, destino)
 
 
-def aplicar_perfil() -> None:
+def aplicar_perfil(perfil: Path = PERFIL, dados: Path = DADOS_HERMES,
+                   rotulo: str = "") -> None:
     """Funde o delta versionado no config.yaml do agente.
 
     E o que torna a instalacao reproduzivel: quem clonar o repositorio e
@@ -1209,10 +1525,10 @@ def aplicar_perfil() -> None:
     fora do git — ele guarda .env, auth.json e sessoes — entao o delta e o
     unico caminho para versionar configuracao sem versionar segredo.
     """
-    if not PERFIL.is_file() or not hermes_configurado():
+    if not perfil.is_file() or not hermes_configurado(dados):
         return
 
-    instalar_arquivos_do_perfil()
+    instalar_arquivos_do_perfil(perfil, dados)
 
     try:
         import yaml
@@ -1221,9 +1537,9 @@ def aplicar_perfil() -> None:
               f"{D}(pip install -r requirements.txt){R}")
         return
 
-    alvo = DADOS_HERMES / "config.yaml"
+    alvo = dados / "config.yaml"
     atual = yaml.safe_load(alvo.read_text(encoding="utf-8")) or {}
-    delta = yaml.safe_load(PERFIL.read_text(encoding="utf-8")) or {}
+    delta = yaml.safe_load(perfil.read_text(encoding="utf-8")) or {}
     fundido, mudancas = fundir(atual, delta)
     if not mudancas:
         return
@@ -1235,7 +1551,7 @@ def aplicar_perfil() -> None:
         yaml.safe_dump(fundido, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
-    PERFIL_APLICADO.extend(mudancas)
+    PERFIL_APLICADO.extend(f"{rotulo}{m}" for m in mudancas)
 
 
 # --------------------------------------------------------------------------- #
@@ -1393,8 +1709,10 @@ def carregar(variaveis: dict[str, str]) -> None:
 def subir(variaveis: dict[str, str], versao: str) -> None:
     global SUBIU
     SUBIU = True  # a partir daqui pode haver container de pe para derrubar
-    with Pulsando("subindo servicos"):
-        compose("up", "-d")
+    # Depois de um `--delete` nao ha imagem nenhuma: este `up` baixa alguns GB
+    # e constroi a do MCP. Por isso e o unico comando narrado do arquivo.
+    with Pulsando("subindo servicos") as pulso:
+        compose_narrado(pulso, "up", "-d")
 
     # Container sobrando de uma execucao anterior nao e recriado pelo `up -d`:
     # se estiver doente, fica doente, e a espera estoura sem dizer porque.
@@ -1430,10 +1748,39 @@ def resetar() -> None:
     print(f"  {VERDE}{OK}{R} volume removido\n")
 
 
+def remover_arvore(caminho: Path) -> list[str]:
+    """Apaga a arvore e devolve o que nao saiu, em vez de levantar.
+
+    O `onexc` nao e zelo: no Windows o unlink respeita o atributo somente-
+    leitura do PROPRIO arquivo, nao a permissao do diretorio como no POSIX, e
+    o Hermes deixa varios assim em `bin/` e `lazy-packages/`. Sem o retry
+    depois do chmod, o rmtree morre no meio e deixa a arvore pela metade — o
+    pior dos dois mundos, porque o proximo boot acha config incompleta.
+
+    O que resta costuma ser handle preso pelo Docker Desktop, que solta
+    sozinho em segundos. Por isso vira aviso, nao excecao: o resto do
+    `--delete` ja foi feito e travar aqui nao desfaz nada.
+    """
+    restos: list[str] = []
+
+    def insistir(func, alvo, exc) -> None:
+        try:
+            os.chmod(alvo, stat.S_IWRITE)
+            func(alvo)
+        except OSError as erro:
+            restos.append(f"{alvo}: {erro.strerror or erro}")
+
+    shutil.rmtree(caminho, onexc=insistir)
+    return restos
+
+
 def apagar_tudo() -> None:
     confirmar(
-        f"apaga {B}containers, volume, rede e as imagens baixadas{R} "
-        f"{D}(postgres:alpine e nousresearch/hermes-agent){R}.",
+        f"apaga {B}containers, volume, rede, imagens{R} e {B}os dados do agente{R}\n"
+        f"    {D}o banco inteiro, e {DADOS_HERMES.name}/ e {DADOS_CLIENTE.name}/ "
+        f"com config, memorias, sessoes e o historico dos DOIS agentes.{R}\n"
+        f"    {D}o que volta sozinho no proximo `runner.py`: config (da baseline "
+        f"versionada), SOUL, skills e hooks.{R}",
         "apagar",
     )
     # Um comando so ja cobre os quatro; os `docker ... rm` abaixo sao rede de
@@ -1443,10 +1790,27 @@ def apagar_tudo() -> None:
     subprocess.run(["docker", "volume", "rm", "-f", VOLUME], capture_output=True)
     subprocess.run(["docker", "network", "rm", REDE], capture_output=True)
     print(f"  {VERDE}{OK}{R} containers, volume, rede e imagens removidos")
-    if DADOS_HERMES.exists():
-        print(f"  {D}mantido: {DADOS_HERMES} (config, skills e memorias do agente){R}")
-        print(f"  {D}apague a mao se quiser refazer o setup do zero{R}")
-    print()
+
+    for pasta in (DADOS_HERMES, DADOS_CLIENTE):
+        if not pasta.exists():
+            continue
+        if restos := remover_arvore(pasta):
+            print(f"  {AMAR}{FALHA}{R} {pasta.name}/ saiu pela metade, "
+                  f"{len(restos)} item(ns) presos:")
+            for resto in restos[:3]:
+                print(f"      {D}{resto}{R}")
+            print(f"  {D}costuma ser handle do Docker Desktop; repita em alguns "
+                  f"segundos{R}")
+        else:
+            print(f"  {VERDE}{OK}{R} dados removidos {D}· {pasta.name}/{R}")
+
+    print(f"\n  {D}o proximo {R}{B}python .docker/runner.py{R}{D} reconstroi tudo "
+          f"do zero, sem wizard:{R}")
+    # as_posix() nas duas: o Path do Windows imprime com barra invertida, e
+    # a linha sairia com as duas barras misturadas. Barra normal e o que se
+    # digita para chamar o proprio runner.
+    print(f"  {D}a config vem de {BASELINE.relative_to(RAIZ).as_posix()} e o resto de "
+          f"{PERFIL.parent.relative_to(RAIZ).as_posix()}/{R}\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -1456,7 +1820,7 @@ def main() -> None:
     grupo.add_argument("--setup", action="store_true", help="wizard do Hermes (rodar uma vez, antes)")
     grupo.add_argument("--down", action="store_true", help="derruba os containers, preserva o resto")
     grupo.add_argument("--reset", action="store_true", help="DESTROI o volume do banco e recomeca")
-    grupo.add_argument("--delete", action="store_true", help="DESTROI containers, volume, rede e imagens")
+    grupo.add_argument("--delete", action="store_true", help="DESTROI tudo, inclusive os dados do agente")
     args = ap.parse_args()
 
     # ler_env() antes de tudo: e ele que carrega SEGREDOS, e sem isso um erro
@@ -1480,10 +1844,16 @@ def main() -> None:
     # YAML e instala as skills. Num clone limpo isso demora o bastante para a
     # tela parecer travada — e tela parada nao distingue trabalhando de morto.
     # O resultado nao vira print: aparece no bloco HERMES do painel.
-    with Pulsando("carregando config do Hermes"):
+    with Pulsando("carregando config dos agentes"):
         semear_baseline()
         if hermes_configurado():
             aplicar_perfil()
+        # O balcao do cliente, do mesmo jeito e a partir da MESMA baseline.
+        # O prefixo no rotulo e o que faz o painel distinguir de quem e cada
+        # mudanca — sem ele as duas listas viram uma so, sem dono.
+        semear_baseline(DADOS_CLIENTE)
+        if hermes_configurado(DADOS_CLIENTE):
+            aplicar_perfil(PERFIL_CLIENTE, DADOS_CLIENTE, rotulo="cliente:")
 
     if not hermes_configurado():
         raise RuntimeError(

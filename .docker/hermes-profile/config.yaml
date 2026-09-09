@@ -162,6 +162,12 @@ mcp_servers:
         - recusar_prato
         - consultar_cardapio
         - registrar_compra
+        # O lado dela do ciclo de venda. `publicar_prato` e o unico caminho
+        # para um prato chegar ao cliente — o bot do cliente le `vw_cardapio`,
+        # que so tem o que passou por aqui.
+        - publicar_prato
+        - despublicar_prato
+        - consultar_pedidos
 
 
 # --------------------------------------------------------------------------- #

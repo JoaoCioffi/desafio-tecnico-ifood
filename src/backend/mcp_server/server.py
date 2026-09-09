@@ -464,6 +464,11 @@ def _avaliar(prato: dict):
         perfil=[vb.FatoPerfil(f["categoria"], f["item"], f["resposta"], f["status"])
                 for f in repo.perfil_listar()],
         orcamento_restante=Decimal(str(repo.orcamento()["restante"])),
+        # O rendimento vem do BANCO, nao de um palpite sobre o peso. Sem ele o
+        # dominio comparava a receita inteira contra o peso de uma marmita e
+        # barrava prato correto — perguntando justamente o numero que estava
+        # gravado na linha ao lado.
+        porcoes=int(prato.get("porcoes") or 1),
     )
 
 
@@ -758,6 +763,228 @@ def recusar_prato(prato_id: int, motivo: str | None = None) -> dict:
 #
 #  Esta rota devolve a mesma decisao em JSON simples: um GET, uma resposta.
 #  O hook fica em trinta linhas de urllib, sem dependencia nenhuma.
+
+# --------------------------------------------------------------------------- #
+#  Venda
+#
+#  Daqui para baixo existe um SEGUNDO agente falando com este mesmo servidor:
+#  o bot do cliente. Os dois nunca trocam mensagem — coordenam pelo banco.
+#
+#  A separacao entre o que cada um pode fazer e feita por `tools.include` no
+#  config de cada perfil, fora do alcance dos dois modelos. Mas nao e so nisso
+#  que se confia: as ferramentas do cliente nao TEM como violar as regras, mesmo
+#  que alguem as exponha por engano. Vender exige linha em `vw_cardapio`, e o
+#  preco vem de la, nao do parametro.
+# --------------------------------------------------------------------------- #
+class ItemCardapio(BaseModel):
+    cardapio_id: int
+    prato: str
+    preco: float
+    porcoes_disponiveis: int
+    porcoes_vendidas: int
+
+
+def _item_cardapio(linha: dict) -> ItemCardapio:
+    return ItemCardapio(
+        cardapio_id=linha["cardapio_id"],
+        prato=linha["nome"],
+        preco=float(linha["preco"]),
+        porcoes_disponiveis=int(linha["porcoes_disponiveis"]),
+        porcoes_vendidas=int(linha["porcoes_vendidas"]),
+    )
+
+
+# ---------------------------- lado da Dona Maria --------------------------- #
+@mcp.tool
+def publicar_prato(prato_id: int, preco: float, lotes: int = 1) -> dict:
+    """Poe um prato ACEITO a venda, para o cliente poder pedir.
+
+    So depois que ela decidir o preco. E o mesmo principio do aceite: o preco e
+    dela, voce nunca inventa um.
+
+    `lotes` e quantas vezes ela vai COZINHAR a receita, nao quantas porcoes ela
+    quer vender. Uma receita que rende 4 porcoes, publicada com 3 lotes, oferece
+    12 porcoes — e compromete tres vezes o ingrediente na despensa.
+
+    A chamada RECUSA se a despensa nao aguentar os lotes pedidos, e a recusa vem
+    com `lotes_possiveis` e o ingrediente que limita. Nao tente contornar
+    republicando: ofereca o numero que cabe, ou proponha comprar o que falta.
+
+    Republicar o mesmo prato ATUALIZA preco e lotes. Nao cria uma segunda
+    oferta, e os pedidos ja feitos continuam valendo o preco que tinham.
+
+    Args:
+        prato_id: o id do prato, que precisa estar aceito.
+        preco: o preco por porcao que a DONA MARIA escolheu.
+        lotes: quantas vezes a receita sera feita.
+    """
+    if lotes < 1:
+        return {"publicado": False, "motivo": "lotes precisa ser pelo menos 1"}
+
+    linha = repo.cardapio_publicar(prato_id, preco, lotes)
+    if linha is None:
+        # A recusa ja aconteceu no banco. Aqui so se descobre QUAL das duas foi,
+        # para a resposta dizer algo acionavel em vez de "nao deu".
+        prato = repo.prato_carregar(prato_id)
+        if prato is None:
+            return {"publicado": False, "motivo": f"prato {prato_id} nao existe"}
+        if prato["status"] != "aceito":
+            return {"publicado": False,
+                    "motivo": f"o prato esta '{prato['status']}' — so prato aceito vai ao ar"}
+
+        cabe = repo.lotes_possiveis(prato_id) or {}
+        possiveis = cabe.get("lotes") or 0
+        return {
+            "publicado": False,
+            "motivo": f"a despensa nao aguenta {lotes} lotes",
+            "lotes_possiveis": possiveis,
+            "ingrediente_limitante": cabe.get("limitante"),
+            "porcoes_possiveis": possiveis * int(prato["porcoes"] or 1),
+            "sugestao": "publique menos lotes, ou compre mais do ingrediente "
+                        "que limita antes de publicar",
+        }
+
+    no_ar = next((c for c in repo.cardapio_listar()
+                  if c["cardapio_id"] == linha["id"]), None)
+    return {
+        "publicado": True,
+        "prato": no_ar["nome"] if no_ar else None,
+        "preco": float(linha["preco"]),
+        "lotes": linha["lotes"],
+        "porcoes_a_venda": int(no_ar["porcoes_disponiveis"]) if no_ar else None,
+    }
+
+
+@mcp.tool
+def despublicar_prato(prato_id: int) -> dict:
+    """Tira um prato do cardapio. Os pedidos ja feitos continuam valendo.
+
+    O ingrediente que a publicacao comprometia volta a ficar disponivel para
+    outros pratos. O que ja foi vendido nao volta: aquilo ela recebeu.
+    """
+    linha = repo.cardapio_retirar(prato_id)
+    if linha is None:
+        return {"retirado": False, "motivo": f"o prato {prato_id} nao estava no ar"}
+    return {"retirado": True, "prato_id": prato_id, "preco_que_vigorava": float(linha["preco"])}
+
+
+@mcp.tool
+def consultar_pedidos(cliente: str | None = None) -> dict:
+    """O que foi vendido, e quanto disso e dela depois da taxa.
+
+    Use quando ela perguntar como estao as vendas, ou antes de sugerir uma
+    compra nova — o saldo aqui ja soma o que entrou.
+
+    `liquido` e o que sobra depois dos 10% da plataforma. E esse o numero que
+    entra no caixa; o bruto nunca foi dela.
+    """
+    pedidos = repo.pedidos_listar(cliente)
+    c = repo.caixa()
+    return {
+        "pedidos": [
+            {"id": p["id"], "cliente": p["cliente"], "prato": p["prato"],
+             "porcoes": p["porcoes"], "preco_unitario": float(p["preco_unitario"]),
+             "bruto": float(p["valor_bruto"]), "taxa": float(p["taxa"]),
+             "liquido": float(p["valor_liquido"]),
+             "quando": p["criado_em"].isoformat()}
+            for p in pedidos
+        ],
+        "caixa": {
+            "orcamento_inicial": float(c["orcamento_inicial"]),
+            "gasto_em_ingredientes": float(c["gasto"]),
+            "vendas_brutas": float(c["vendas_brutas"]),
+            "taxa_plataforma": float(c["taxa_plataforma"]),
+            "receita_liquida": float(c["receita_liquida"]),
+            "saldo": float(c["saldo"]),
+        },
+    }
+
+
+# ------------------------------ lado do cliente ---------------------------- #
+@mcp.tool
+def consultar_cardapio_publico() -> dict:
+    """O que a Dona Maria tem a venda agora.
+
+    Esta e a UNICA fonte de pratos. Nao ha como pedir algo que nao esteja
+    listado aqui, e nao adianta o cliente descrever um prato que ele viu em
+    outro lugar — se nao esta nesta lista, ela nao esta vendendo.
+
+    `porcoes_disponiveis` ja desconta o que outros clientes levaram.
+    """
+    itens = [_item_cardapio(c) for c in repo.cardapio_listar()
+             if c["porcoes_disponiveis"] > 0]
+    return {"itens": [i.model_dump() for i in itens],
+            "total": len(itens),
+            "vazio": not itens}
+
+
+@mcp.tool
+def fazer_pedido(cardapio_id: int, cliente: str, porcoes: int = 1) -> dict:
+    """Compra porcoes de um prato do cardapio.
+
+    Repare que nao ha parametro de preco: quem define quanto custa e a Dona
+    Maria, na publicacao. O valor do pedido sai do cardapio.
+
+    A chamada RECUSA em dois casos, e a recusa e do banco, nao uma checagem que
+    voce possa contornar reformulando o pedido:
+
+      - o prato nao esta publicado (ou saiu do ar)
+      - nao restam porcoes suficientes
+
+    Quando recusar, diga o que esta disponivel de verdade em vez de tentar de
+    novo com outro numero.
+
+    Args:
+        cardapio_id: o id que veio de `consultar_cardapio_publico`.
+        cliente: quem esta pedindo.
+        porcoes: quantas porcoes.
+    """
+    if porcoes < 1:
+        return {"pedido_feito": False, "motivo": "precisa pedir pelo menos uma porcao"}
+
+    pedido = repo.pedido_registrar(cardapio_id, cliente.strip(), porcoes)
+    if pedido is None:
+        # Descobre QUAL das duas recusas foi, so para explicar. A decisao ja
+        # foi tomada pelo banco; isto aqui e redacao da resposta.
+        no_ar = next((c for c in repo.cardapio_listar()
+                      if c["cardapio_id"] == cardapio_id), None)
+        if no_ar is None:
+            return {"pedido_feito": False,
+                    "motivo": "este prato nao esta a venda",
+                    "cardapio": consultar_cardapio_publico()["itens"]}
+        return {"pedido_feito": False,
+                "motivo": f"restam {no_ar['porcoes_disponiveis']} porcoes, "
+                          f"e voce pediu {porcoes}",
+                "porcoes_disponiveis": int(no_ar["porcoes_disponiveis"])}
+
+    return {
+        "pedido_feito": True,
+        "pedido_id": pedido["id"],
+        "prato": (repo.pedido_carregar(pedido["id"]) or {}).get("prato"),
+        "porcoes": pedido["porcoes"],
+        "preco_unitario": float(pedido["preco_unitario"]),
+        "total": float(pedido["valor_bruto"]),
+    }
+
+
+@mcp.tool
+def consultar_pedido(pedido_id: int) -> dict:
+    """Detalhe de um pedido ja feito."""
+    p = repo.pedido_carregar(pedido_id)
+    if p is None:
+        return {"encontrado": False, "motivo": f"pedido {pedido_id} nao existe"}
+    return {
+        "encontrado": True,
+        "pedido_id": p["id"],
+        "cliente": p["cliente"],
+        "prato": p["prato"],
+        "porcoes": p["porcoes"],
+        "preco_unitario": float(p["preco_unitario"]),
+        "total": float(p["valor_bruto"]),
+        "quando": p["criado_em"].isoformat(),
+    }
+
+
 # --------------------------------------------------------------------------- #
 @mcp.custom_route("/saude", methods=["GET"])
 async def rota_saude(request):

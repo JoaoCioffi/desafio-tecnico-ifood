@@ -290,7 +290,10 @@ services/.baseline-terra.json
 
 # Dados do agente Hermes (bind mount do container): guarda .env, auth.json,
 # sessoes e memorias. Nada disso pode ir para o repositorio.
-.docker/hermes-data/
+# HERMES_HOME de cada agente: config viva, .env copiado, auth.json, sessoes
+# e memorias. O glob cobre hermes-data/ e hermes-data-cliente/ — e o proximo
+# agente, que senao entraria no commit sem ninguem notar.
+.docker/hermes-data*/
 
 # Backups temporarios do runner
 .docker/*.bkp

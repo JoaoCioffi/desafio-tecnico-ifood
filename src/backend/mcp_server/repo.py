@@ -280,3 +280,202 @@ def orcamento() -> dict:
         return cur.execute("SELECT total, gasto, restante FROM vw_orcamento").fetchone() or {
             "total": Decimal(0), "gasto": Decimal(0), "restante": Decimal(0)
         }
+
+
+# --------------------------------------------------------------------------- #
+#  Cardapio publicado e pedidos
+#
+#  A partir daqui existe um SEGUNDO agente lendo este mesmo banco — o bot do
+#  cliente. Os dois nunca conversam entre si: coordenam pelas tabelas. Por
+#  isso as regras de venda vivem em SQL e nao em prompt; um prompt vale para o
+#  agente que o carrega, uma constraint vale para todo mundo.
+# --------------------------------------------------------------------------- #
+# Quanto ESTE prato ja compromete hoje, por ingrediente. `vw_estoque.comprometido`
+# inclui a publicacao atual dele, entao republicar com o mesmo numero se recusaria
+# sozinho se a gente nao devolvesse isso para a conta. COALESCE 1 porque prato
+# aceito e nao publicado ja segura uma receita.
+_LOTES_ATUAIS = """
+    COALESCE((SELECT c.lotes FROM cardapio c
+               WHERE c.prato_id = pi.prato_id AND c.retirado_em IS NULL), 1)
+"""
+
+
+def lotes_possiveis(prato_id: int) -> dict | None:
+    """Quantos lotes a despensa aguenta hoje, e qual ingrediente limita.
+
+    Existe para a recusa ser util. "Nao da" manda o agente adivinhar o proximo
+    numero; "da para 2, o leite integral limita" e uma frase que ela entende e
+    sobre a qual decide.
+    """
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            f"""
+            SELECT MIN(FLOOR((e.disponivel + pi.quantidade * {_LOTES_ATUAIS})
+                             / pi.quantidade))::int AS lotes,
+                   (ARRAY_AGG(pi.ingrediente ORDER BY
+                        (e.disponivel + pi.quantidade * {_LOTES_ATUAIS})
+                        / pi.quantidade))[1] AS limitante
+              FROM pratos_ingredientes pi
+              JOIN vw_estoque e ON e.ingrediente = pi.ingrediente
+             WHERE pi.prato_id = %(prato_id)s
+            """,
+            {"prato_id": prato_id},
+        ).fetchone()
+
+
+def cardapio_publicar(prato_id: int, preco, lotes: int = 1) -> dict | None:
+    """Poe um prato ACEITO a venda. Devolve None se o prato nao pode ir ao ar.
+
+    Duas condicoes, e as duas moram no proprio INSERT: o prato tem que estar
+    aceito, e a despensa tem que aguentar os lotes pedidos.
+
+    A segunda estava so na skill — "confira a despensa antes de publicar numero
+    alto". Instrucao em prompt vale para o agente que a carrega e cede quando
+    alguem insiste; foi por isso que o gate de viabilidade virou hook em vez de
+    paragrafo no SOUL. Publicar 3 lotes de um prato que so tem despensa para 2
+    deixaria o estoque NEGATIVO, e ela descobriria na hora de cozinhar — que e
+    exatamente o que o enunciado manda impedir.
+
+    Checar antes e inserir depois nao serve: entre a leitura e a escrita o
+    numero pode mudar. Uma sentenca so nao tem essa janela.
+
+    Republicar troca preco e lotes em vez de criar linha nova — o indice
+    parcial `idx_cardapio_ativo` so admite uma publicacao ativa por prato.
+    """
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            f"""
+            INSERT INTO cardapio (prato_id, preco, lotes)
+            SELECT p.id, %(preco)s, %(lotes)s
+              FROM pratos p
+             WHERE p.id = %(prato_id)s
+               AND p.status = 'aceito'
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM pratos_ingredientes pi
+                     JOIN vw_estoque e ON e.ingrediente = pi.ingrediente
+                    WHERE pi.prato_id = p.id
+                      AND e.disponivel + pi.quantidade * {_LOTES_ATUAIS}
+                          < pi.quantidade * %(lotes)s
+               )
+            ON CONFLICT (prato_id) WHERE retirado_em IS NULL
+            DO UPDATE SET preco = EXCLUDED.preco,
+                          lotes = EXCLUDED.lotes,
+                          publicado_em = now()
+            RETURNING id, prato_id, preco, lotes, publicado_em
+            """,
+            {"prato_id": prato_id, "preco": preco, "lotes": lotes},
+        ).fetchone()
+
+
+def cardapio_retirar(prato_id: int) -> dict | None:
+    """Tira do ar. Nao apaga: preenche `retirado_em` e o historico fica."""
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            """
+            UPDATE cardapio SET retirado_em = now()
+             WHERE prato_id = %s AND retirado_em IS NULL
+            RETURNING id, prato_id, preco, lotes
+            """,
+            (prato_id,),
+        ).fetchone()
+
+
+def cardapio_listar() -> list[dict]:
+    """O que esta no ar agora, com quantas porcoes ainda restam."""
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            """
+            SELECT cardapio_id, prato_id, nome, preco, cmv,
+                   porcoes_por_lote, lotes, porcoes_publicadas,
+                   porcoes_vendidas, porcoes_disponiveis, receita_liquida
+              FROM vw_cardapio
+             ORDER BY nome
+            """
+        ).fetchall()
+
+
+def pedido_registrar(cardapio_id: int, cliente: str, porcoes: int) -> dict | None:
+    """Vende, ou devolve None. As duas recusas possiveis sao a MESMA sentenca.
+
+    Nao existe caminho para vender o que nao esta publicado nem para vender
+    mais porcoes do que restam: `vw_cardapio` so tem prato no ar e aceito, e o
+    `porcoes_disponiveis >= %(porcoes)s` esta dentro do INSERT. Se o SELECT nao
+    devolver linha, nao ha o que inserir — a recusa e a ausencia de dados, nao
+    uma decisao de codigo que alguem possa esquecer de escrever.
+
+    O PRECO vem da view, nunca do chamador. O cliente diz o que quer e quanto;
+    quanto custa e dela. Aceitar preco por parametro seria deixar o agente do
+    cliente negociar sozinho — e este projeto inteiro existe para manter esse
+    tipo de numero fora do alcance do modelo.
+
+    O advisory lock serializa os pedidos DESTA linha do cardapio. Sem ele, dois
+    pedidos simultaneos leem `porcoes_disponiveis` no mesmo instantaneo, ambos
+    veem folga e ambos entram: em READ COMMITTED o Postgres nao trava um
+    agregado, entao a ultima porcao pode ser vendida duas vezes. O lock e por
+    transacao e cai sozinho no commit.
+    """
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (cardapio_id,))
+        return cur.execute(
+            """
+            INSERT INTO pedidos (cardapio_id, cliente, porcoes, preco_unitario)
+            SELECT c.cardapio_id, %(cliente)s, %(porcoes)s, c.preco
+              FROM vw_cardapio c
+             WHERE c.cardapio_id = %(cardapio_id)s
+               AND c.porcoes_disponiveis >= %(porcoes)s
+            RETURNING id, cardapio_id, cliente, porcoes, preco_unitario,
+                      valor_bruto, taxa, valor_liquido, criado_em
+            """,
+            {"cardapio_id": cardapio_id, "cliente": cliente, "porcoes": porcoes},
+        ).fetchone()
+
+
+def pedido_carregar(pedido_id: int) -> dict | None:
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            """
+            SELECT ped.id, ped.cliente, ped.porcoes, ped.preco_unitario,
+                   ped.valor_bruto, ped.taxa, ped.valor_liquido, ped.criado_em,
+                   p.nome AS prato
+              FROM pedidos  ped
+              JOIN cardapio c ON c.id = ped.cardapio_id
+              JOIN pratos   p ON p.id = c.prato_id
+             WHERE ped.id = %s
+            """,
+            (pedido_id,),
+        ).fetchone()
+
+
+def pedidos_listar(cliente: str | None = None) -> list[dict]:
+    """Todos os pedidos, ou os de um cliente. Do mais recente para o mais antigo."""
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            """
+            SELECT ped.id, ped.cliente, ped.porcoes, ped.preco_unitario,
+                   ped.valor_bruto, ped.taxa, ped.valor_liquido, ped.criado_em,
+                   p.nome AS prato
+              FROM pedidos  ped
+              JOIN cardapio c ON c.id = ped.cardapio_id
+              JOIN pratos   p ON p.id = c.prato_id
+             WHERE %(cliente)s::text IS NULL
+                OR unaccent_lower(ped.cliente) = unaccent_lower(%(cliente)s::text)
+             ORDER BY ped.criado_em DESC
+            """,
+            {"cliente": cliente},
+        ).fetchall()
+
+
+def caixa() -> dict:
+    """Orcamento - compras + vendas liquidas. O que ela pode gastar hoje."""
+    zerado = {"orcamento_inicial": Decimal(0), "gasto": Decimal(0),
+              "vendas_brutas": Decimal(0), "taxa_plataforma": Decimal(0),
+              "receita_liquida": Decimal(0), "saldo": Decimal(0)}
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            """
+            SELECT orcamento_inicial, gasto, vendas_brutas,
+                   taxa_plataforma, receita_liquida, saldo
+              FROM vw_caixa
+            """
+        ).fetchone() or zerado
