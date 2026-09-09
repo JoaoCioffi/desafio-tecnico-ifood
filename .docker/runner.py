@@ -877,29 +877,20 @@ def _par_de_bytes(texto: str) -> tuple[float, float] | None:
     return _bytes(achado.group(1)), _bytes(achado.group(2))
 
 
-def compose_narrado(pulso: Pulsando, *args: str) -> None:
-    """`docker compose` com a saida lida ao vivo, narrando no pulso.
+# O que o registry devolve quando o problema e a rede, nao a configuracao.
+# So estes reexecutam: "pull access denied", "manifest unknown" ou "no space
+# left" sao definitivos, e repeti-los seria so demorar mais para dar o mesmo
+# erro — pior, escondendo a causa atras de tres tentativas.
+_TRANSITORIO = re.compile(
+    r"TLS handshake timeout|i/o timeout|connection reset|unexpected EOF"
+    r"|temporary failure|dial tcp|timeout awaiting|context deadline exceeded"
+    r"|500 Internal Server Error|502 Bad Gateway|503 Service Unavailable",
+    re.IGNORECASE,
+)
 
-    O `compose()` normal captura tudo e so devolve no fim. Serve para comando
-    rapido; nao serve para o `up` depois de um `--delete`, quando ha alguns GB
-    de imagem para baixar e a do MCP para construir. A tela ficava parada
-    minutos a fio, com um relogio subindo como unico sinal de vida — e relogio
-    subindo e exatamente o que um processo travado tambem faz.
 
-    Soma os bytes por CAMADA, nao por linha: o Docker reimprime a mesma camada
-    a cada atualizacao, e somar as linhas contaria o mesmo download dezenas de
-    vezes. Guardar o ultimo par por id faz o total so andar para frente.
-
-    E separa download de extracao. As duas fases reportam `X/Y` no mesmo
-    formato e para a mesma camada, entao um dicionario so faria o total VOLTAR
-    quando a camada recem-baixada comecasse a extrair. Separadas, o rotulo
-    troca e o numero recomeca honestamente — extrair alguns GB tambem demora,
-    e congelar o painel ali seria trocar um silencio por outro.
-
-    Quando nada casa o padrao — build, criacao de container — mostra a ultima
-    linha util. Pior que o numero, melhor que o silencio, e nunca pior que o
-    comportamento antigo.
-    """
+def _rodar_narrado(pulso: Pulsando, args: tuple[str, ...]) -> tuple[int, list[str]]:
+    """Uma passada do compose, narrando no pulso. Devolve (codigo, saida)."""
     cmd = ["docker", "compose", "--env-file", str(ENV), "-f", str(COMPOSE),
            "--progress", "plain", *args]
     proc = subprocess.Popen(
@@ -934,8 +925,51 @@ def compose_narrado(pulso: Pulsando, *args: str) -> None:
         else:
             pulso.texto = cortar(linha, max(20, largura() - 20))
 
-    if proc.wait() != 0:
-        raise RuntimeError(("\n".join(historico[-8:]) or "docker compose falhou")[:500])
+    return proc.wait(), historico
+
+
+def compose_narrado(pulso: Pulsando, *args: str, tentativas: int = 3) -> None:
+    """`docker compose` com a saida lida ao vivo, narrando no pulso.
+
+    O `compose()` normal captura tudo e so devolve no fim. Serve para comando
+    rapido; nao serve para o `up` depois de um `--delete`, quando ha alguns GB
+    de imagem para baixar e a do MCP para construir. A tela ficava minutos
+    parada com um relogio subindo — que e exatamente o que um processo travado
+    tambem faz.
+
+    Soma os bytes por CAMADA, nao por linha: o Docker reimprime a mesma camada
+    a cada atualizacao, e somar as linhas contaria o mesmo download dezenas de
+    vezes. Guardar o ultimo par por id faz o total so andar para frente.
+
+    E separa download de extracao. As duas fases reportam `X/Y` no mesmo
+    formato e para a MESMA camada, entao um dicionario so faria o total VOLTAR
+    quando a camada recem-baixada comecasse a extrair.
+
+    Repete quando a falha e de rede. Um `TLS handshake timeout` no fim de tres
+    minutos de download derrubava a subida inteira, e a acao obvia era
+    justamente aquela que o runner nao fazia: rodar de novo. O `up` reconcilia
+    o que ja existe, entao repetir nao duplica nada, e as camadas ja baixadas
+    ficam no cache do Docker — a segunda tentativa comeca de onde a primeira
+    parou, nao do zero.
+
+    Falha que nao e de rede sobe na primeira: insistir em "pull access denied"
+    so demora mais para dar o mesmo erro, escondendo a causa.
+    """
+    for tentativa in range(1, tentativas + 1):
+        codigo, historico = _rodar_narrado(pulso, args)
+        if codigo == 0:
+            return
+
+        cauda = "\n".join(historico[-8:]) or "docker compose falhou"
+        ultima = tentativa == tentativas
+        if ultima or not _TRANSITORIO.search(cauda):
+            quantas = f" (apos {tentativa} tentativas)" if tentativa > 1 else ""
+            raise RuntimeError(f"{cauda[:500]}{quantas}")
+
+        espera = 3 * tentativa
+        pulso.texto = (f"a rede falhou, repetindo em {espera}s  "
+                       f"tentativa {tentativa + 1} de {tentativas}")
+        time.sleep(espera)
 
 
 # .Name vem com barra na frente; e o primeiro campo para dar match por nome,

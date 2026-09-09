@@ -127,6 +127,12 @@ services:
       context: ..
       dockerfile: .docker/mcp.Dockerfile
     image: sabor-da-maria-mcp:local
+    # Esta imagem e construida aqui, nunca publicada. Sem a politica explicita
+    # o compose tenta buscar `sabor-da-maria-mcp:local` no Docker Hub antes de
+    # construir e devolve "pull access denied ... may require docker login" —
+    # um erro de autenticacao, que e a pista errada, e que aparece toda vez que
+    # a imagem nao existe: ou seja, sempre depois de um `--delete`.
+    pull_policy: build
     container_name: sabor-da-maria-mcp
     restart: unless-stopped
 
