@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field
 from domain.precificacao import ItemCusto
 from domain.precificacao import calcular_cmv as calcular
 from domain.precificacao import montar_cenarios, preco_minimo, preco_por_alvo
-from domain.unidades import UnidadeIncompativel, converter, normalizar
+from domain.unidades import (UnidadeIncompativel, consolidar, converter,
+                            normalizar)
 # Importado como MODULO, nao pelos nomes: `FatoPerfil` e `ItemReceita` tambem
 # existem aqui como modelos pydantic das ferramentas, e a definicao local
 # sombreava silenciosamente o import do dominio — o erro so aparecia em
@@ -562,6 +563,14 @@ def propor_prato(nome: str, ingredientes: list[ItemReceita],
             continue
         itens.append({"ingrediente": linha["ingrediente"], "quantidade": quantidade,
                       "unidade_base": base, "comprar": False, "custo_compra": None})
+
+    # Receita longa repete ingrediente de proposito — parmesao no molho e para
+    # gratinar. A chave primaria de `pratos_ingredientes` e (prato_id,
+    # ingrediente), e a segunda linha estourava a ferramenta inteira com
+    # `duplicate key`. O que se via era o agente tentando de novo e escrevendo
+    # OUTRA receita; a de 21 ingredientes que expos isso vinha de uma lasanha.
+    itens, repetidos = consolidar(itens)
+    sem_conversao += repetidos
 
     prato = repo.prato_propor(nome, fonte, porcoes,
                               [r.model_dump() for r in requisitos], itens)
