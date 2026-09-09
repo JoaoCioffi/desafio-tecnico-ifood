@@ -10,14 +10,9 @@
   <sub><b>runner.py</b> segura a stack e mostra o estado  ·  <b>painel-mcp.py</b> mostra o que o agente pediu, o que voltou e o que o gate decidiu</sub>
 </p>
 
-Agente de cardápio e precificação construído sobre o
-[Hermes Agent](https://github.com/nousresearch/hermes-agent), para o desafio técnico
-de Senior AI Engineer.
+Agente de cardápio e precificação construído sobre o [Hermes Agent](https://github.com/nousresearch/hermes-agent), para o desafio técnico de Senior AI Software Engineer.
 
-Leva a Dona Maria da despensa ao cardápio de lançamento: pesquisa receitas na web,
-descobre na conversa o que ela consegue cozinhar, compara com despensa e orçamento,
-calcula o CMV e propõe cenários de preço com a taxa de 10%. Depois publica o prato,
-um segundo bot simula o cliente comprando, e o caixa dela cresce.
+Leva a Dona Maria da despensa ao cardápio de lançamento: pesquisa receitas na web, descobre na conversa o que ela consegue cozinhar, compara com despensa e orçamento, calcula o CMV e propõe cenários de preço com a taxa de 10%. Depois publica o prato, um segundo bot simula o cliente comprando, e o caixa dela cresce.
 
 ---
 

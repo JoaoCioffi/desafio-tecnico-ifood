@@ -1,858 +1,2484 @@
 <!doctype html>
 <html lang="pt-BR">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sabor da Maria · Desafio Técnico Senior AI Engineer</title>
-<style>
-:root{
-  --red:#EA1D2C; --red-dark:#C8101E; --red-deep:#A50D18; --red-light:#FF3341;
-  --red-soft:#FFCFD3; --red-tint:#FFF4F5; --yellow:#FFB800;
-  --ink:#1C1C1E; --body:#4A4A52; --muted:#7C7C86; --faint:#A9A9B2;
-  --line:#E8E4E5; --line-2:#F2EFEF; --bg:#FBF9F9; --white:#fff;
-  --green:#0A9F4E; --green-soft:#E6F6EC; --green-ink:#0A7A3D; --green-line:#C9E9D6;
-  --amber:#B87508; --amber-soft:#FDF3E0; --amber-line:#F2E2C0;
-  --violet:#6A4D9C; --violet-soft:#F3EEFA; --violet-line:#DED2F0;
-  --slate:#3E4C5E; --slate-soft:#EEF1F5; --slate-line:#D9E0E9;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --mono:ui-monospace,"Cascadia Code","Consolas","DejaVu Sans Mono",monospace;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:100%;overflow:hidden;
-  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-.stage{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform-origin:center center}
-.slide{position:absolute;inset:0;background:var(--white);display:none;flex-direction:column;
-  padding:28px 46px 20px;overflow:hidden}
-.slide.on{display:flex;animation:entra .3s cubic-bezier(.22,.7,.3,1)}
-@keyframes entra{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sabor da Maria · Desafio Técnico Senior AI Engineer</title>
+  <style>
+    :root {
+      --red: #EA1D2C;
+      --red-dark: #C8101E;
+      --red-deep: #A50D18;
+      --red-light: #FF3341;
+      --red-soft: #FFCFD3;
+      --red-tint: #FFF4F5;
+      --yellow: #FFB800;
+      --ink: #1C1C1E;
+      --body: #4A4A52;
+      --muted: #7C7C86;
+      --faint: #A9A9B2;
+      --line: #E8E4E5;
+      --line-2: #F2EFEF;
+      --bg: #FBF9F9;
+      --white: #fff;
+      --green: #0A9F4E;
+      --green-soft: #E6F6EC;
+      --green-ink: #0A7A3D;
+      --green-line: #C9E9D6;
+      --amber: #B87508;
+      --amber-soft: #FDF3E0;
+      --amber-line: #F2E2C0;
+      --violet: #6A4D9C;
+      --violet-soft: #F3EEFA;
+      --violet-line: #DED2F0;
+      --slate: #3E4C5E;
+      --slate-soft: #EEF1F5;
+      --slate-line: #D9E0E9;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "Cascadia Code", "Consolas", "DejaVu Sans Mono", monospace;
+    }
 
-.ic{width:15px;height:15px;flex-shrink:0;stroke:currentColor;fill:none;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
 
-.sh{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;
-  border-bottom:1px solid var(--line);flex-shrink:0}
-.sh h2{font-size:29px;font-weight:800;letter-spacing:-.7px;color:var(--ink);line-height:1.05}
-.sh h2 b{color:var(--red);font-weight:800}
-.kick{font-size:9.6px;font-weight:800;letter-spacing:1.7px;color:var(--muted);
-  text-transform:uppercase;margin-bottom:7px}
-.sh .lede{font-size:12.6px;color:var(--muted);margin-top:8px;line-height:1.42;max-width:880px}
-.mark{flex-shrink:0;padding-left:24px;text-align:right}
-.mark .nm{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.2px}
-.mark .rl{font-size:9.4px;font-weight:700;letter-spacing:1.2px;color:var(--red);
-  text-transform:uppercase;margin-top:3px}
-.body{flex:1;padding-top:16px;display:flex;flex-direction:column;min-height:0}
+    html,
+    body {
+      background: #17171A;
+      font-family: var(--sans);
+      color: var(--body);
+      height: 100%;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility
+    }
 
-/* capa e fecho */
-.cover,.close{background:
-    radial-gradient(1100px 600px at 88% -10%, rgba(234,29,44,.30), transparent 62%),
-    linear-gradient(140deg,#1C1C1E 0%,#231B1D 48%,#2A1114 100%);
-  color:#fff;padding:0;justify-content:center}
-.cover .inner,.close .inner{padding:0 76px;width:100%}
-.cover .tag{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.22);
-  border-radius:999px;padding:6px 15px;font-size:10px;font-weight:800;letter-spacing:1.5px;
-  text-transform:uppercase;color:#FFCFD3}
-.cover h1{font-size:80px;font-weight:800;line-height:.95;letter-spacing:-2.6px;margin:20px 0 0;color:#fff}
-.cover h1 b{color:var(--red-light);font-weight:800}
-.cover .sub{font-size:19px;font-weight:600;color:#D8D2D3;margin-top:16px;max-width:800px;line-height:1.36}
-.cover .rule{height:3px;width:74px;background:var(--red);border-radius:2px;margin-top:26px}
-.cover .who{margin-top:26px;font-size:22px;font-weight:800;color:#fff;letter-spacing:-.4px}
-.cover .whor{font-size:11px;font-weight:700;letter-spacing:1.5px;color:#9E9297;
-  text-transform:uppercase;margin-top:5px}
-.ct{display:flex;gap:9px;margin-top:24px;flex-wrap:wrap}
-.ct a,.ct span{display:inline-flex;align-items:center;gap:8px;
-  background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.13);border-radius:8px;
-  padding:9px 13px;font-size:11.6px;color:#E4DEDF;text-decoration:none;font-weight:600}
-.ct .ic{color:var(--red-light);width:14px;height:14px}
-.cover .meta{display:flex;gap:38px;margin-top:30px;padding-top:19px;border-top:1px solid rgba(255,255,255,.14)}
-.cover .meta div{font-size:10.4px;color:#8E8489;letter-spacing:.4px}
-.cover .meta b{display:block;font-size:13.4px;color:#fff;font-weight:700;margin-top:5px;letter-spacing:-.1px}
-.close h2{font-size:45px;font-weight:800;letter-spacing:-1.5px;line-height:1.1;color:#fff;max-width:930px}
-.close h2 b{color:var(--red-light)}
-.close .sub{font-size:15px;color:#B5ADAF;margin-top:18px;max-width:790px;line-height:1.52}
+    .stage {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 1280px;
+      height: 720px;
+      transform-origin: center center
+    }
 
-/* blocos */
-.card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
-  display:flex;flex-direction:column;min-height:0}
-.card-h{font-size:11px;font-weight:800;letter-spacing:1px;color:var(--ink);
-  text-transform:uppercase;margin-bottom:11px;display:flex;align-items:center;gap:8px}
-.card-h .ic{color:var(--red)}
-.cols{display:grid;gap:15px;flex:1;min-height:0}
-.c3{grid-template-columns:1fr 1fr 1fr}
+    .slide {
+      position: absolute;
+      inset: 0;
+      background: var(--white);
+      display: none;
+      flex-direction: column;
+      padding: 28px 46px 20px;
+      overflow: hidden
+    }
 
-.band{display:flex;align-items:center;gap:11px;background:var(--red-tint);
-  border:1px solid var(--red-soft);border-radius:10px;padding:11px 15px;margin-top:12px;
-  font-size:11.8px;color:var(--ink);flex-shrink:0;line-height:1.4}
-.band .ic{color:var(--red)}
-.band b{font-weight:800}
-.band>span{flex:1}
-.band.dark{background:var(--ink);border-color:var(--ink);color:#DED8D9}
-.band.dark b{color:#fff}
-.band.dark .ic{color:var(--red-light)}
+    .slide.on {
+      display: flex;
+      animation: entra .3s cubic-bezier(.22, .7, .3, 1)
+    }
 
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex-shrink:0}
-.stat{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
-.stat .n{font-size:32px;font-weight:800;color:var(--red);letter-spacing:-1.4px;line-height:1}
-.stat .n small{font-size:15px;font-weight:700;letter-spacing:-.4px}
-.stat .u{font-size:10.6px;color:var(--muted);margin-top:6px;font-weight:600;line-height:1.3}
+    @keyframes entra {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
 
-.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
-  font-size:9.4px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap}
-.pill.ok{background:var(--green-soft);color:var(--green-ink)}
-.pill.no{background:var(--red-soft);color:var(--red-deep)}
-.pill.hum{background:var(--amber-soft);color:var(--amber)}
-.pill.det{background:var(--slate-soft);color:var(--slate)}
-.pill.ai{background:var(--violet-soft);color:var(--violet)}
+      to {
+        opacity: 1;
+        transform: none
+      }
+    }
 
-/* jornada em tres fases */
-.fases{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;flex:1;min-height:0}
-.fase{border:1px solid var(--line);border-radius:12px;padding:16px 17px;display:flex;
-  flex-direction:column;background:#fff;position:relative}
-.fase::after{content:'';position:absolute;right:-11px;top:50%;width:8px;height:8px;
-  border-top:2px solid var(--faint);border-right:2px solid var(--faint);
-  transform:translateY(-50%) rotate(45deg)}
-.fase:last-child::after{display:none}
-.fase .fn{font-size:9.6px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--red)}
-.fase h4{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.5px;margin:5px 0 11px}
-/* cada passo cresce igual e centra o proprio texto: o card e esticado pelo
+    .ic {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
+    .sh {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0
+    }
+
+    .sh h2 {
+      font-size: 29px;
+      font-weight: 800;
+      letter-spacing: -.7px;
+      color: var(--ink);
+      line-height: 1.05
+    }
+
+    .sh h2 b {
+      color: var(--red);
+      font-weight: 800
+    }
+
+    .kick {
+      font-size: 9.6px;
+      font-weight: 800;
+      letter-spacing: 1.7px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 7px
+    }
+
+    .sh .lede {
+      font-size: 12.6px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.42;
+      max-width: 880px
+    }
+
+    .mark {
+      flex-shrink: 0;
+      padding-left: 24px;
+      text-align: right
+    }
+
+    .mark .nm {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px
+    }
+
+    .mark .rl {
+      font-size: 9.4px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-top: 3px
+    }
+
+    .body {
+      flex: 1;
+      padding-top: 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0
+    }
+
+    /* capa e fecho */
+    .cover,
+    .close {
+      background:
+        radial-gradient(1100px 600px at 88% -10%, rgba(234, 29, 44, .30), transparent 62%),
+        linear-gradient(140deg, #1C1C1E 0%, #231B1D 48%, #2A1114 100%);
+      color: #fff;
+      padding: 0;
+      justify-content: center
+    }
+
+    .cover .inner,
+    .close .inner {
+      padding: 0 76px;
+      width: 100%
+    }
+
+    .cover .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, .22);
+      border-radius: 999px;
+      padding: 6px 15px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #FFCFD3
+    }
+
+    .cover h1 {
+      font-size: 80px;
+      font-weight: 800;
+      line-height: .95;
+      letter-spacing: -2.6px;
+      margin: 20px 0 0;
+      color: #fff
+    }
+
+    .cover h1 b {
+      color: var(--red-light);
+      font-weight: 800
+    }
+
+    .cover .sub {
+      font-size: 19px;
+      font-weight: 600;
+      color: #D8D2D3;
+      margin-top: 16px;
+      max-width: 800px;
+      line-height: 1.36
+    }
+
+    .cover .rule {
+      height: 3px;
+      width: 74px;
+      background: var(--red);
+      border-radius: 2px;
+      margin-top: 26px
+    }
+
+    .cover .who {
+      margin-top: 26px;
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -.4px
+    }
+
+    .cover .whor {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: #9E9297;
+      text-transform: uppercase;
+      margin-top: 5px
+    }
+
+    .ct {
+      display: flex;
+      gap: 9px;
+      margin-top: 24px;
+      flex-wrap: wrap
+    }
+
+    .ct a,
+    .ct span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, .055);
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: 8px;
+      padding: 9px 13px;
+      font-size: 11.6px;
+      color: #E4DEDF;
+      text-decoration: none;
+      font-weight: 600
+    }
+
+    .ct .ic {
+      color: var(--red-light);
+      width: 14px;
+      height: 14px
+    }
+
+    .cover .meta {
+      display: flex;
+      gap: 38px;
+      margin-top: 30px;
+      padding-top: 19px;
+      border-top: 1px solid rgba(255, 255, 255, .14)
+    }
+
+    .cover .meta div {
+      font-size: 10.4px;
+      color: #8E8489;
+      letter-spacing: .4px
+    }
+
+    .cover .meta b {
+      display: block;
+      font-size: 13.4px;
+      color: #fff;
+      font-weight: 700;
+      margin-top: 5px;
+      letter-spacing: -.1px
+    }
+
+    .close h2 {
+      font-size: 45px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1.1;
+      color: #fff;
+      max-width: 930px
+    }
+
+    .close h2 b {
+      color: var(--red-light)
+    }
+
+    .close .sub {
+      font-size: 15px;
+      color: #B5ADAF;
+      margin-top: 18px;
+      max-width: 790px;
+      line-height: 1.52
+    }
+
+    /* blocos */
+    .card {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0
+    }
+
+    .card-h {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--ink);
+      text-transform: uppercase;
+      margin-bottom: 11px;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .card-h .ic {
+      color: var(--red)
+    }
+
+    .cols {
+      display: grid;
+      gap: 15px;
+      flex: 1;
+      min-height: 0
+    }
+
+    .c3 {
+      grid-template-columns: 1fr 1fr 1fr
+    }
+
+    .band {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      background: var(--red-tint);
+      border: 1px solid var(--red-soft);
+      border-radius: 10px;
+      padding: 11px 15px;
+      margin-top: 12px;
+      font-size: 11.8px;
+      color: var(--ink);
+      flex-shrink: 0;
+      line-height: 1.4
+    }
+
+    .band .ic {
+      color: var(--red)
+    }
+
+    .band b {
+      font-weight: 800
+    }
+
+    .band>span {
+      flex: 1
+    }
+
+    .band.dark {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #DED8D9
+    }
+
+    .band.dark b {
+      color: #fff
+    }
+
+    .band.dark .ic {
+      color: var(--red-light)
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      flex-shrink: 0
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 13px 15px;
+      background: #fff
+    }
+
+    .stat .n {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--red);
+      letter-spacing: -1.4px;
+      line-height: 1
+    }
+
+    .stat .n small {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -.4px
+    }
+
+    .stat .u {
+      font-size: 10.6px;
+      color: var(--muted);
+      margin-top: 6px;
+      font-weight: 600;
+      line-height: 1.3
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 9.4px;
+      font-weight: 800;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      white-space: nowrap
+    }
+
+    .pill.ok {
+      background: var(--green-soft);
+      color: var(--green-ink)
+    }
+
+    .pill.no {
+      background: var(--red-soft);
+      color: var(--red-deep)
+    }
+
+    .pill.hum {
+      background: var(--amber-soft);
+      color: var(--amber)
+    }
+
+    .pill.det {
+      background: var(--slate-soft);
+      color: var(--slate)
+    }
+
+    .pill.ai {
+      background: var(--violet-soft);
+      color: var(--violet)
+    }
+
+    /* jornada em tres fases */
+    .fases {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+      flex: 1;
+      min-height: 0
+    }
+
+    .fase {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 17px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      position: relative
+    }
+
+    .fase::after {
+      content: '';
+      position: absolute;
+      right: -11px;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-top: 2px solid var(--faint);
+      border-right: 2px solid var(--faint);
+      transform: translateY(-50%) rotate(45deg)
+    }
+
+    .fase:last-child::after {
+      display: none
+    }
+
+    .fase .fn {
+      font-size: 9.6px;
+      font-weight: 800;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+      color: var(--red)
+    }
+
+    .fase h4 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.5px;
+      margin: 5px 0 11px
+    }
+
+    /* cada passo cresce igual e centra o proprio texto: o card e esticado pelo
    grid, e sem isso o conteudo se acumula no topo deixando metade vazia */
-.fstep{position:relative;padding:11px 0 11px 27px;font-size:12.4px;color:var(--ink);line-height:1.36;
-  border-bottom:1px solid var(--line-2);flex:1;display:flex;flex-direction:column;justify-content:center}
-.fstep:last-child{border-bottom:0}
-.fstep .ic{position:absolute;left:0;top:50%;margin-top:-14px;color:var(--red)}
-.fstep b{font-weight:700}
-.fstep small{display:block;font-size:10.6px;color:var(--muted);margin-top:3px;line-height:1.32}
+    .fstep {
+      position: relative;
+      padding: 11px 0 11px 27px;
+      font-size: 12.4px;
+      color: var(--ink);
+      line-height: 1.36;
+      border-bottom: 1px solid var(--line-2);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center
+    }
 
-/* comparativo Hermes */
-.vs{display:grid;grid-template-columns:1fr 1fr;gap:15px;flex-shrink:0}
-.vsc{border:1px solid var(--line);border-radius:12px;padding:15px 17px;background:#fff;
-  display:flex;flex-direction:column}
-.vsc.alt{background:var(--red-tint);border-color:var(--red-soft)}
-.vsc .vt{font-size:9.6px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
-.vsc.alt .vt{color:var(--red)}
-.vsc h4{font-size:17px;font-weight:800;color:var(--ink);letter-spacing:-.4px;margin:5px 0 10px}
-.vsc p{font-size:12.4px;color:var(--body);line-height:1.44}
-.vsc p b{color:var(--ink);font-weight:700}
-.gains{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex:1;min-height:0;margin-top:15px}
-.gain{border:1px solid var(--line);border-radius:11px;padding:14px 15px;background:var(--bg);
-  display:flex;flex-direction:column;gap:9px;justify-content:center}
-.gain .ic{color:var(--red);width:19px;height:19px}
-.gain b{font-size:12.2px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.16}
-.gain span{font-size:10.8px;color:var(--muted);line-height:1.36}
+    .fstep:last-child {
+      border-bottom: 0
+    }
 
-/* anatomia do preco — a figura central do slide da conta */
-.pbar{display:flex;border-radius:11px;overflow:hidden;border:1px solid var(--line);
-  flex-shrink:0;height:78px}
-.pseg{display:flex;flex-direction:column;justify-content:center;padding:0 18px;position:relative}
-.pseg .pv{font-size:25px;font-weight:800;letter-spacing:-1px;line-height:1}
-.pseg .pl{font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;margin-top:5px}
-.pseg .ps{font-size:10.4px;line-height:1.25;margin-top:3px}
-.pseg.comida{background:var(--amber-soft);flex:0 0 30%}
-.pseg.comida .pv,.pseg.comida .pl{color:var(--amber)} .pseg.comida .ps{color:#8A5806}
-.pseg.taxa{background:var(--red-tint);flex:0 0 10%;border-left:1px solid var(--line);
-  border-right:1px solid var(--line);padding:0 12px}
-.pseg.taxa .pv,.pseg.taxa .pl{color:var(--red-deep)} .pseg.taxa .ps{color:var(--red-deep)}
-.pseg.margem{background:var(--green-soft);flex:1}
-.pseg.margem .pv,.pseg.margem .pl{color:var(--green-ink)} .pseg.margem .ps{color:var(--green-ink)}
-.pcap{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;flex-shrink:0}
-.pcap .pt{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--ink);
-  display:flex;align-items:center;gap:8px}
-.pcap .pt .ic{color:var(--red)}
-.pcap .pd{font-size:11.4px;color:var(--muted)}
+    .fstep .ic {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      margin-top: -14px;
+      color: var(--red)
+    }
 
-/* fluxo do dinheiro — mesma linguagem visual do ciclo de caixa, de proposito:
+    .fstep b {
+      font-weight: 700
+    }
+
+    .fstep small {
+      display: block;
+      font-size: 10.6px;
+      color: var(--muted);
+      margin-top: 3px;
+      line-height: 1.32
+    }
+
+    /* comparativo Hermes */
+    .vs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      flex-shrink: 0
+    }
+
+    .vsc {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 15px 17px;
+      background: #fff;
+      display: flex;
+      flex-direction: column
+    }
+
+    .vsc.alt {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .vsc .vt {
+      font-size: 9.6px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted)
+    }
+
+    .vsc.alt .vt {
+      color: var(--red)
+    }
+
+    .vsc h4 {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.4px;
+      margin: 5px 0 10px
+    }
+
+    .vsc p {
+      font-size: 12.4px;
+      color: var(--body);
+      line-height: 1.44
+    }
+
+    .vsc p b {
+      color: var(--ink);
+      font-weight: 700
+    }
+
+    .gains {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+      margin-top: 15px
+    }
+
+    .gain {
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 14px 15px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      justify-content: center
+    }
+
+    .gain .ic {
+      color: var(--red);
+      width: 19px;
+      height: 19px
+    }
+
+    .gain b {
+      font-size: 12.2px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px;
+      line-height: 1.16
+    }
+
+    .gain span {
+      font-size: 10.8px;
+      color: var(--muted);
+      line-height: 1.36
+    }
+
+    /* anatomia do preco — a figura central do slide da conta */
+    .pbar {
+      display: flex;
+      border-radius: 11px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      flex-shrink: 0;
+      height: 78px
+    }
+
+    .pseg {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 18px;
+      position: relative
+    }
+
+    .pseg .pv {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1
+    }
+
+    .pseg .pl {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .9px;
+      text-transform: uppercase;
+      margin-top: 5px
+    }
+
+    .pseg .ps {
+      font-size: 10.4px;
+      line-height: 1.25;
+      margin-top: 3px
+    }
+
+    .pseg.comida {
+      background: var(--amber-soft);
+      flex: 0 0 30%
+    }
+
+    .pseg.comida .pv,
+    .pseg.comida .pl {
+      color: var(--amber)
+    }
+
+    .pseg.comida .ps {
+      color: #8A5806
+    }
+
+    .pseg.taxa {
+      background: var(--red-tint);
+      flex: 0 0 10%;
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 0 12px
+    }
+
+    .pseg.taxa .pv,
+    .pseg.taxa .pl {
+      color: var(--red-deep)
+    }
+
+    .pseg.taxa .ps {
+      color: var(--red-deep)
+    }
+
+    .pseg.margem {
+      background: var(--green-soft);
+      flex: 1
+    }
+
+    .pseg.margem .pv,
+    .pseg.margem .pl {
+      color: var(--green-ink)
+    }
+
+    .pseg.margem .ps {
+      color: var(--green-ink)
+    }
+
+    .pcap {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 9px;
+      flex-shrink: 0
+    }
+
+    .pcap .pt {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .pcap .pt .ic {
+      color: var(--red)
+    }
+
+    .pcap .pd {
+      font-size: 11.4px;
+      color: var(--muted)
+    }
+
+    /* fluxo do dinheiro — mesma linguagem visual do ciclo de caixa, de proposito:
    sao os dois slides que seguem dinheiro, e o olho reconhece a forma */
-.rota{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;flex:1;min-height:0}
-.rp{border:1px solid var(--line);border-radius:12px;padding:16px 13px;background:#fff;
-  display:flex;flex-direction:column;gap:9px;position:relative;text-align:center;
-  align-items:center;justify-content:center}
-.rp::after{content:'';position:absolute;right:-8px;top:50%;width:7px;height:7px;
-  border-top:2px solid var(--faint);border-right:2px solid var(--faint);
-  transform:translateY(-50%) rotate(45deg);z-index:1}
-.rp:last-child::after{display:none}
-.rp .ri{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
-  background:var(--slate-soft);color:var(--slate)}
-.rp .ri .ic{width:21px;height:21px}
-.rp b{font-size:12.8px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.14}
-.rp .rv{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.6px}
-.rp span{font-size:10.6px;color:var(--muted);line-height:1.3}
-.rp.custo{background:var(--amber-soft);border-color:var(--amber-line)}
-.rp.custo .ri{background:#fff;color:var(--amber)} .rp.custo .rv{color:var(--amber)}
-.rp.taxa{background:var(--red-tint);border-color:var(--red-soft)}
-.rp.taxa .ri{background:#fff;color:var(--red)} .rp.taxa .rv{color:var(--red-deep)}
-.rp.sobra{background:var(--green-soft);border-color:var(--green-line)}
-.rp.sobra .ri{background:#fff;color:var(--green-ink)} .rp.sobra .rv{color:var(--green-ink)}
+    .rota {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 11px;
+      flex: 1;
+      min-height: 0
+    }
 
-/* armadilha: duas direcoes */
-.dirs{display:grid;grid-template-columns:1fr 1fr;gap:15px;flex:1;min-height:0}
-/* A sobra e repartida entre TODOS os blocos, nao empilhada antes do ultimo.
+    .rp {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 13px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      position: relative;
+      text-align: center;
+      align-items: center;
+      justify-content: center
+    }
+
+    .rp::after {
+      content: '';
+      position: absolute;
+      right: -8px;
+      top: 50%;
+      width: 7px;
+      height: 7px;
+      border-top: 2px solid var(--faint);
+      border-right: 2px solid var(--faint);
+      transform: translateY(-50%) rotate(45deg);
+      z-index: 1
+    }
+
+    .rp:last-child::after {
+      display: none
+    }
+
+    .rp .ri {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--slate-soft);
+      color: var(--slate)
+    }
+
+    .rp .ri .ic {
+      width: 21px;
+      height: 21px
+    }
+
+    .rp b {
+      font-size: 12.8px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px;
+      line-height: 1.14
+    }
+
+    .rp .rv {
+      font-family: var(--mono);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -.6px
+    }
+
+    .rp span {
+      font-size: 10.6px;
+      color: var(--muted);
+      line-height: 1.3
+    }
+
+    .rp.custo {
+      background: var(--amber-soft);
+      border-color: var(--amber-line)
+    }
+
+    .rp.custo .ri {
+      background: #fff;
+      color: var(--amber)
+    }
+
+    .rp.custo .rv {
+      color: var(--amber)
+    }
+
+    .rp.taxa {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .rp.taxa .ri {
+      background: #fff;
+      color: var(--red)
+    }
+
+    .rp.taxa .rv {
+      color: var(--red-deep)
+    }
+
+    .rp.sobra {
+      background: var(--green-soft);
+      border-color: var(--green-line)
+    }
+
+    .rp.sobra .ri {
+      background: #fff;
+      color: var(--green-ink)
+    }
+
+    .rp.sobra .rv {
+      color: var(--green-ink)
+    }
+
+    /* armadilha: duas direcoes */
+    .dirs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      flex: 1;
+      min-height: 0
+    }
+
+    /* A sobra e repartida entre TODOS os blocos, nao empilhada antes do ultimo.
    Com a consequencia presa no rodape por `margin-top:auto`, o vao inteiro
    virava um buraco unico no meio do cartao. */
-.dir{border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;border:1px solid;
-  justify-content:space-between}
-.dir.up{background:var(--amber-soft);border-color:var(--amber-line)}
-.dir.down{background:var(--red-tint);border-color:var(--red-soft)}
-.dir .dh{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;
-  display:flex;align-items:center;gap:8px}
-.dir.up .dh{color:var(--amber)} .dir.down .dh{color:var(--red-deep)}
-.dir h4{font-size:23px;font-weight:800;letter-spacing:-.6px;margin:7px 0 5px;color:var(--ink)}
-.dir .sd{font-size:12.4px;color:var(--body);line-height:1.44}
-.ex{background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:10px;padding:13px 15px}
-.exl{display:flex;align-items:baseline;gap:9px;font-size:12.6px;padding:7px 0}
-.exl .en{font-weight:700;color:var(--ink);flex:1}
-.exl .ev{font-family:var(--mono);font-size:11.4px;color:var(--muted);text-decoration:line-through}
-.exl .er{font-family:var(--mono);font-size:11.4px;font-weight:700;color:var(--green-ink)}
-.exl .ef{font-size:9.6px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
-  padding:2px 7px;border-radius:5px}
-.dir.up .ef{background:var(--amber-soft);color:var(--amber)}
-.dir.down .ef{background:var(--red-soft);color:var(--red-deep)}
-.conseq{font-size:13.2px;line-height:1.44;font-weight:600}
-.dir.up .conseq{color:#8A5806} .dir.down .conseq{color:var(--red-deep)}
-.conseq b{font-weight:800}
+    .dir {
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid;
+      justify-content: space-between
+    }
 
-/* arquitetura */
-/* A altura e distribuida, nao natural: sem `flex:1` na zona e nas fileiras o
+    .dir.up {
+      background: var(--amber-soft);
+      border-color: var(--amber-line)
+    }
+
+    .dir.down {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .dir .dh {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .dir.up .dh {
+      color: var(--amber)
+    }
+
+    .dir.down .dh {
+      color: var(--red-deep)
+    }
+
+    .dir h4 {
+      font-size: 23px;
+      font-weight: 800;
+      letter-spacing: -.6px;
+      margin: 7px 0 5px;
+      color: var(--ink)
+    }
+
+    .dir .sd {
+      font-size: 12.4px;
+      color: var(--body);
+      line-height: 1.44
+    }
+
+    .ex {
+      background: #fff;
+      border: 1px solid rgba(0, 0, 0, .07);
+      border-radius: 10px;
+      padding: 13px 15px
+    }
+
+    .exl {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+      font-size: 12.6px;
+      padding: 7px 0
+    }
+
+    .exl .en {
+      font-weight: 700;
+      color: var(--ink);
+      flex: 1
+    }
+
+    .exl .ev {
+      font-family: var(--mono);
+      font-size: 11.4px;
+      color: var(--muted);
+      text-decoration: line-through
+    }
+
+    .exl .er {
+      font-family: var(--mono);
+      font-size: 11.4px;
+      font-weight: 700;
+      color: var(--green-ink)
+    }
+
+    .exl .ef {
+      font-size: 9.6px;
+      font-weight: 800;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 5px
+    }
+
+    .dir.up .ef {
+      background: var(--amber-soft);
+      color: var(--amber)
+    }
+
+    .dir.down .ef {
+      background: var(--red-soft);
+      color: var(--red-deep)
+    }
+
+    .conseq {
+      font-size: 13.2px;
+      line-height: 1.44;
+      font-weight: 600
+    }
+
+    .dir.up .conseq {
+      color: #8A5806
+    }
+
+    .dir.down .conseq {
+      color: var(--red-deep)
+    }
+
+    .conseq b {
+      font-weight: 800
+    }
+
+    /* arquitetura */
+    /* A altura e distribuida, nao natural: sem `flex:1` na zona e nas fileiras o
    diagrama encolhia para o tamanho do texto e sobrava meia tela em branco. */
-.arch{display:flex;flex-direction:column;flex:1;min-height:0;gap:9px}
-.arch>.tier{flex:0 0 auto}
-.zone{border:1px dashed var(--slate-line);border-radius:12px;padding:10px 12px 12px;
-  background:var(--slate-soft);flex:1;min-height:0;display:flex;flex-direction:column}
-.zone .zl{font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;
-  color:var(--muted);margin-bottom:9px;flex-shrink:0}
-.zone .tier{flex:1;min-height:0}
-.tier{display:grid;gap:10px}
-.t2{grid-template-columns:1fr 1fr}
-.t3{grid-template-columns:1fr 1fr 1fr}
-.node{border:1px solid var(--line);border-radius:10px;background:#fff;padding:12px 14px;
-  display:flex;align-items:center;gap:11px;min-height:0}
-.node .ic{color:var(--slate)}
-.node b{font-size:12.2px;font-weight:800;color:var(--ink);display:block;line-height:1.1;letter-spacing:-.2px}
-.node small{font-size:10px;color:var(--muted);display:block;line-height:1.25;margin-top:2px}
-.node .tag{margin-left:auto;flex-shrink:0}
-.node.ai{background:var(--violet-soft);border-color:var(--violet-line)}
-.node.ai .ic{color:var(--violet)}
-.node.gate{background:var(--red-tint);border-color:var(--red-soft)}
-.node.gate .ic{color:var(--red)} .node.gate b{color:var(--red-deep)}
-.node.data{background:var(--ink);border-color:var(--ink)}
-.node.data .ic{color:var(--red-light)} .node.data b{color:#fff} .node.data small{color:#9E9297}
-.arrow{display:flex;align-items:center;justify-content:center;gap:7px;color:var(--faint);
-  font-size:9.2px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
-.arrow .ic{width:12px;height:12px;transform:rotate(90deg)}
-.leg{display:flex;gap:15px;align-items:center}
-.leg span{display:flex;align-items:center;gap:6px;font-size:9.4px;font-weight:800;letter-spacing:.6px;
-  text-transform:uppercase;color:var(--muted)}
-.leg i{width:11px;height:11px;border-radius:3px;display:block;border:1px solid}
-.leg i.ai{background:var(--violet-soft);border-color:var(--violet-line)}
-.leg i.det{background:#fff;border-color:var(--line)}
-.leg i.gate{background:var(--red-tint);border-color:var(--red-soft)}
-.leg i.data{background:var(--ink);border-color:var(--ink)}
+    .arch {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      gap: 9px
+    }
 
-/* ciclo de caixa */
-.ciclo{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;flex-shrink:0}
-.cx{border:1px solid var(--line);border-radius:12px;padding:15px 12px;background:#fff;
-  display:flex;flex-direction:column;gap:8px;position:relative;text-align:center;align-items:center}
-.cx::after{content:'';position:absolute;right:-8px;top:50%;width:7px;height:7px;
-  border-top:2px solid var(--faint);border-right:2px solid var(--faint);
-  transform:translateY(-50%) rotate(45deg);z-index:1}
-.cx:last-child::after{display:none}
-.cx .ci{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
-  background:var(--red-tint);color:var(--red)}
-.cx .ci .ic{width:19px;height:19px}
-.cx b{font-size:12.4px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.14}
-.cx .cv{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red);letter-spacing:-.5px}
-.cx span{font-size:10.4px;color:var(--muted);line-height:1.3}
-.cx.fim{background:var(--green-soft);border-color:var(--green-line)}
-.cx.fim .ci{background:#fff;color:var(--green-ink)}
-.cx.fim .cv{color:var(--green-ink)}
-.guards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1;min-height:0;margin-top:14px}
-/* Mesma regra do cartao da armadilha: a sobra e repartida entre os tres
+    .arch>.tier {
+      flex: 0 0 auto
+    }
+
+    .zone {
+      border: 1px dashed var(--slate-line);
+      border-radius: 12px;
+      padding: 10px 12px 12px;
+      background: var(--slate-soft);
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column
+    }
+
+    .zone .zl {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 9px;
+      flex-shrink: 0
+    }
+
+    .zone .tier {
+      flex: 1;
+      min-height: 0
+    }
+
+    .tier {
+      display: grid;
+      gap: 10px
+    }
+
+    .t2 {
+      grid-template-columns: 1fr 1fr
+    }
+
+    .t3 {
+      grid-template-columns: 1fr 1fr 1fr
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 0
+    }
+
+    .node .ic {
+      color: var(--slate)
+    }
+
+    .node b {
+      font-size: 12.2px;
+      font-weight: 800;
+      color: var(--ink);
+      display: block;
+      line-height: 1.1;
+      letter-spacing: -.2px
+    }
+
+    .node small {
+      font-size: 10px;
+      color: var(--muted);
+      display: block;
+      line-height: 1.25;
+      margin-top: 2px
+    }
+
+    .node .tag {
+      margin-left: auto;
+      flex-shrink: 0
+    }
+
+    .node.ai {
+      background: var(--violet-soft);
+      border-color: var(--violet-line)
+    }
+
+    .node.ai .ic {
+      color: var(--violet)
+    }
+
+    .node.gate {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .node.gate .ic {
+      color: var(--red)
+    }
+
+    .node.gate b {
+      color: var(--red-deep)
+    }
+
+    .node.data {
+      background: var(--ink);
+      border-color: var(--ink)
+    }
+
+    .node.data .ic {
+      color: var(--red-light)
+    }
+
+    .node.data b {
+      color: #fff
+    }
+
+    .node.data small {
+      color: #9E9297
+    }
+
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      color: var(--faint);
+      font-size: 9.2px;
+      font-weight: 800;
+      letter-spacing: 1.1px;
+      text-transform: uppercase
+    }
+
+    .arrow .ic {
+      width: 12px;
+      height: 12px;
+      transform: rotate(90deg)
+    }
+
+    .leg {
+      display: flex;
+      gap: 15px;
+      align-items: center
+    }
+
+    .leg span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9.4px;
+      font-weight: 800;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: var(--muted)
+    }
+
+    .leg i {
+      width: 11px;
+      height: 11px;
+      border-radius: 3px;
+      display: block;
+      border: 1px solid
+    }
+
+    .leg i.ai {
+      background: var(--violet-soft);
+      border-color: var(--violet-line)
+    }
+
+    .leg i.det {
+      background: #fff;
+      border-color: var(--line)
+    }
+
+    .leg i.gate {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .leg i.data {
+      background: var(--ink);
+      border-color: var(--ink)
+    }
+
+    /* ciclo de caixa */
+    .ciclo {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 11px;
+      flex-shrink: 0
+    }
+
+    .cx {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 15px 12px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      text-align: center;
+      align-items: center
+    }
+
+    .cx::after {
+      content: '';
+      position: absolute;
+      right: -8px;
+      top: 50%;
+      width: 7px;
+      height: 7px;
+      border-top: 2px solid var(--faint);
+      border-right: 2px solid var(--faint);
+      transform: translateY(-50%) rotate(45deg);
+      z-index: 1
+    }
+
+    .cx:last-child::after {
+      display: none
+    }
+
+    .cx .ci {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--red-tint);
+      color: var(--red)
+    }
+
+    .cx .ci .ic {
+      width: 19px;
+      height: 19px
+    }
+
+    .cx b {
+      font-size: 12.4px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px;
+      line-height: 1.14
+    }
+
+    .cx .cv {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: -.5px
+    }
+
+    .cx span {
+      font-size: 10.4px;
+      color: var(--muted);
+      line-height: 1.3
+    }
+
+    .cx.fim {
+      background: var(--green-soft);
+      border-color: var(--green-line)
+    }
+
+    .cx.fim .ci {
+      background: #fff;
+      color: var(--green-ink)
+    }
+
+    .cx.fim .cv {
+      color: var(--green-ink)
+    }
+
+    .guards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      flex: 1;
+      min-height: 0;
+      margin-top: 14px
+    }
+
+    /* Mesma regra do cartao da armadilha: a sobra e repartida entre os tres
    blocos. Com o numero preso no rodape, tudo virava um vao unico no meio. */
-.guard{border:1px solid var(--line);border-radius:11px;padding:17px 18px;background:var(--bg);
-  display:flex;flex-direction:column;gap:11px;justify-content:space-between}
-.guard .gh{display:flex;align-items:center;gap:9px}
-.guard .gh .ic{color:var(--red);width:19px;height:19px}
-.guard .gh b{font-size:13.4px;font-weight:800;color:var(--ink);letter-spacing:-.25px;line-height:1.14}
-.guard p{font-size:12.2px;color:var(--body);line-height:1.46}
-.guard .gv{font-family:var(--mono);font-size:12.2px;font-weight:700;color:var(--red)}
+    .guard {
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 17px 18px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      justify-content: space-between
+    }
 
-/* demonstracao */
-.lanes{display:flex;flex-direction:column;gap:11px;flex:1;min-height:0}
-.lane{border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:#fff;
-  display:flex;flex-direction:column;gap:9px}
-.lane.her{background:var(--red-tint);border-color:var(--red-soft)}
-.lane.cli{background:var(--slate-soft);border-color:var(--slate-line)}
-.lane .lh{display:flex;align-items:center;gap:9px;font-size:11.6px;font-weight:800;
-  color:var(--ink);letter-spacing:-.2px}
-.lane .lh .ic{width:17px;height:17px}
-.lane.her .lh .ic{color:var(--red)} .lane.cli .lh .ic{color:var(--slate)}
-.lane .lh em{font-family:var(--mono);font-size:10.2px;font-style:normal;color:var(--muted);
-  font-weight:600;margin-left:auto}
-.steps{display:grid;gap:9px}
-.s4{grid-template-columns:repeat(4,1fr)} .s3{grid-template-columns:repeat(3,1fr)}
-.step{background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:9px;padding:9px 11px;
-  display:flex;flex-direction:column;gap:3px}
-.step .sn{font-family:var(--mono);font-size:9.6px;font-weight:700;color:var(--red)}
-.step b{font-size:11.8px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.16}
-.step span{font-size:10.4px;color:var(--muted);line-height:1.32}
-.step .sp{margin-top:3px}
+    .guard .gh {
+      display: flex;
+      align-items: center;
+      gap: 9px
+    }
 
-/* navegacao */
-.dots{position:fixed;left:0;top:0;height:3px;width:100%;background:rgba(255,255,255,.07);z-index:5}
-.dots i{display:block;height:100%;background:var(--red);transition:width .3s ease}
-.nav{position:fixed;right:20px;bottom:16px;display:flex;align-items:center;gap:9px;z-index:5}
-.nav button{width:31px;height:31px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
-  background:rgba(255,255,255,.06);color:#fff;display:grid;place-items:center;cursor:pointer}
-.nav button:disabled{opacity:.27;cursor:default}
-.count{font-family:var(--mono);font-size:11px;color:#8E8489;min-width:48px;text-align:center}
-.hint{position:fixed;left:20px;bottom:20px;font-size:10px;color:#5E5A5C;letter-spacing:.6px;z-index:5}
-@media print{.nav,.hint,.dots{display:none}}
-</style>
+    .guard .gh .ic {
+      color: var(--red);
+      width: 19px;
+      height: 19px
+    }
+
+    .guard .gh b {
+      font-size: 13.4px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.25px;
+      line-height: 1.14
+    }
+
+    .guard p {
+      font-size: 12.2px;
+      color: var(--body);
+      line-height: 1.46
+    }
+
+    .guard .gv {
+      font-family: var(--mono);
+      font-size: 12.2px;
+      font-weight: 700;
+      color: var(--red)
+    }
+
+    /* demonstracao */
+    .lanes {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      flex: 1;
+      min-height: 0
+    }
+
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 13px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 9px
+    }
+
+    .lane.her {
+      background: var(--red-tint);
+      border-color: var(--red-soft)
+    }
+
+    .lane.cli {
+      background: var(--slate-soft);
+      border-color: var(--slate-line)
+    }
+
+    .lane .lh {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 11.6px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px
+    }
+
+    .lane .lh .ic {
+      width: 17px;
+      height: 17px
+    }
+
+    .lane.her .lh .ic {
+      color: var(--red)
+    }
+
+    .lane.cli .lh .ic {
+      color: var(--slate)
+    }
+
+    .lane .lh em {
+      font-family: var(--mono);
+      font-size: 10.2px;
+      font-style: normal;
+      color: var(--muted);
+      font-weight: 600;
+      margin-left: auto
+    }
+
+    .steps {
+      display: grid;
+      gap: 9px
+    }
+
+    .s4 {
+      grid-template-columns: repeat(4, 1fr)
+    }
+
+    .s3 {
+      grid-template-columns: repeat(3, 1fr)
+    }
+
+    .step {
+      background: #fff;
+      border: 1px solid rgba(0, 0, 0, .07);
+      border-radius: 9px;
+      padding: 9px 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px
+    }
+
+    .step .sn {
+      font-family: var(--mono);
+      font-size: 9.6px;
+      font-weight: 700;
+      color: var(--red)
+    }
+
+    .step b {
+      font-size: 11.8px;
+      font-weight: 800;
+      color: var(--ink);
+      letter-spacing: -.2px;
+      line-height: 1.16
+    }
+
+    .step span {
+      font-size: 10.4px;
+      color: var(--muted);
+      line-height: 1.32
+    }
+
+    .step .sp {
+      margin-top: 3px
+    }
+
+    /* navegacao */
+    .dots {
+      position: fixed;
+      left: 0;
+      top: 0;
+      height: 3px;
+      width: 100%;
+      background: rgba(255, 255, 255, .07);
+      z-index: 5
+    }
+
+    .dots i {
+      display: block;
+      height: 100%;
+      background: var(--red);
+      transition: width .3s ease
+    }
+
+    .nav {
+      position: fixed;
+      right: 20px;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      z-index: 5
+    }
+
+    .nav button {
+      width: 31px;
+      height: 31px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      background: rgba(255, 255, 255, .06);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      cursor: pointer
+    }
+
+    .nav button:disabled {
+      opacity: .27;
+      cursor: default
+    }
+
+    .count {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: #8E8489;
+      min-width: 48px;
+      text-align: center
+    }
+
+    .hint {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      font-size: 10px;
+      color: #5E5A5C;
+      letter-spacing: .6px;
+      z-index: 5
+    }
+
+    @media print {
+
+      .nav,
+      .hint,
+      .dots {
+        display: none
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-<symbol id="i-chef" viewBox="0 0 24 24"><path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/><path d="M6 17h12"/></symbol>
-<symbol id="i-package" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
-<symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
-<symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
-<symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
-<symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></symbol>
-<symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></symbol>
-<symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
-<symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
-<symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
-<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
-<symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
-<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
-<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
-<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
-<symbol id="i-scale" viewBox="0 0 24 24"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></symbol>
-<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
-<symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
-<symbol id="i-utensils" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></symbol>
-<symbol id="i-cart" viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></symbol>
-<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
-<symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
-<symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
-<symbol id="i-linkedin" viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect width="4" height="12" x="2" y="9"/><circle cx="4" cy="4" r="2"/></symbol>
-<symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
-<symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/></symbol>
-<symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></symbol>
-<symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></symbol>
-<symbol id="i-boxes" viewBox="0 0 24 24"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></symbol>
-<symbol id="i-trend" viewBox="0 0 24 24"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></symbol>
-<symbol id="i-down" viewBox="0 0 24 24"><path d="M8 17H2v-6"/><path d="m2 17 8.5-8.5 5 5L22 7"/></symbol>
-<symbol id="i-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9Z"/></symbol>
-<symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
-<symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
-</defs></svg>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-chef" viewBox="0 0 24 24">
+        <path
+          d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z" />
+        <path d="M6 17h12" />
+      </symbol>
+      <symbol id="i-package" viewBox="0 0 24 24">
+        <path d="m7.5 4.27 9 5.15" />
+        <path
+          d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+        <path d="m3.3 7 8.7 5 8.7-5" />
+        <path d="M12 22V12" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path
+          d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </symbol>
+      <symbol id="i-db" viewBox="0 0 24 24">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+        <path d="M3 12A9 3 0 0 0 21 12" />
+      </symbol>
+      <symbol id="i-server" viewBox="0 0 24 24">
+        <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+        <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+        <path d="M6 6h.01" />
+        <path d="M6 18h.01" />
+      </symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24">
+        <path d="M12 8V4H8" />
+        <rect width="16" height="12" x="4" y="8" rx="2" />
+        <path d="M2 14h2" />
+        <path d="M20 14h2" />
+        <path d="M15 13v2" />
+        <path d="M9 13v2" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24">
+        <path
+          d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+        <path d="m21.854 2.147-10.94 10.939" />
+      </symbol>
+      <symbol id="i-wallet" viewBox="0 0 24 24">
+        <path
+          d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
+        <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+      </symbol>
+      <symbol id="i-help" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+        <path d="M12 17h.01" />
+      </symbol>
+      <symbol id="i-term" viewBox="0 0 24 24">
+        <path d="m4 17 6-6-6-6" />
+        <path d="M12 19h8" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+        <path d="M2 12h20" />
+      </symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14" />
+        <path d="m12 5 7 7-7 7" />
+      </symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </symbol>
+      <symbol id="i-scale" viewBox="0 0 24 24">
+        <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+        <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+        <path d="M7 21h10" />
+        <path d="M12 3v18" />
+        <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2" />
+      </symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24">
+        <path
+          d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" />
+        <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+        <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+      </symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24">
+        <path
+          d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+      </symbol>
+      <symbol id="i-utensils" viewBox="0 0 24 24">
+        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+        <path d="M7 2v20" />
+        <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+      </symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24">
+        <circle cx="8" cy="21" r="1" />
+        <circle cx="19" cy="21" r="1" />
+        <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      </symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24">
+        <rect width="20" height="16" x="2" y="4" rx="2" />
+        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+      </symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <path
+          d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </symbol>
+      <symbol id="i-linkedin" viewBox="0 0 24 24">
+        <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+        <rect width="4" height="12" x="2" y="9" />
+        <circle cx="4" cy="4" r="2" />
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 24 24">
+        <path
+          d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+        <path d="M9 18c-4.51 2-5-2-7-2" />
+      </symbol>
+      <symbol id="i-brain" viewBox="0 0 24 24">
+        <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+        <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      </symbol>
+      <symbol id="i-route" viewBox="0 0 24 24">
+        <circle cx="6" cy="19" r="3" />
+        <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+        <circle cx="18" cy="5" r="3" />
+      </symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24">
+        <path d="M12 22v-5" />
+        <path d="M9 8V2" />
+        <path d="M15 8V2" />
+        <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+      </symbol>
+      <symbol id="i-boxes" viewBox="0 0 24 24">
+        <path
+          d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z" />
+        <path d="m7 16.5-4.74-2.85" />
+        <path d="m7 16.5 5-3" />
+        <path d="M7 16.5v5.17" />
+        <path
+          d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z" />
+        <path d="m17 16.5-5-3" />
+        <path d="m17 16.5 4.74-2.85" />
+        <path d="M17 16.5v5.17" />
+        <path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z" />
+        <path d="M12 8 7.26 5.15" />
+        <path d="m12 8 4.74-2.85" />
+        <path d="M12 13.5V8" />
+      </symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24">
+        <path d="M16 7h6v6" />
+        <path d="m22 7-8.5 8.5-5-5L2 17" />
+      </symbol>
+      <symbol id="i-down" viewBox="0 0 24 24">
+        <path d="M8 17H2v-6" />
+        <path d="m2 17 8.5-8.5 5 5L22 7" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 24 24">
+        <path d="m6 3 14 9-14 9Z" />
+      </symbol>
+      <symbol id="i-left" viewBox="0 0 24 24">
+        <path d="m15 18-6-6 6-6" />
+      </symbol>
+      <symbol id="i-right" viewBox="0 0 24 24">
+        <path d="m9 18 6-6-6-6" />
+      </symbol>
+    </defs>
+  </svg>
 
-<div class="stage" id="stage">
+  <div class="stage" id="stage">
 
-<!-- 1 · capa ------------------------------------------------------------- -->
-<section class="slide cover on">
-  <div class="inner">
-    <div class="tag"><svg class="ic"><use href="#i-utensils"/></svg> Desafio Técnico · Senior AI Engineer</div>
-    <h1>Sabor <b>da Maria</b></h1>
-    <div class="sub">Um agente que leva a Dona Maria da despensa ao cardápio de lançamento —
-      e depois até a primeira venda.</div>
-    <div class="rule"></div>
-    <div class="who">João Cioffi</div>
-    <div class="whor">Setembro de 2026</div>
-    <div class="ct">
-      <a href="https://github.com/JoaoCioffi/desafio-tecnico-ifood"><svg class="ic"><use href="#i-github"/></svg> github.com/JoaoCioffi/desafio-tecnico-ifood</a>
-      <a href="https://www.linkedin.com/in/joao-cioffi/"><svg class="ic"><use href="#i-linkedin"/></svg> linkedin.com/in/joao-cioffi</a>
-      <a href="mailto:joaorcioffi@gmail.com"><svg class="ic"><use href="#i-mail"/></svg> joaorcioffi@gmail.com</a>
-      <span><svg class="ic"><use href="#i-phone"/></svg> +55 16 99604-8599</span>
-    </div>
-    <div class="meta">
-      <div>Base<b>Hermes Agent · Nous Research</b></div>
-      <div>Entrega<b>Repositório + demo ao vivo</b></div>
-      <div>Escopo<b>Despensa → cardápio → caixa</b></div>
-    </div>
-  </div>
-</section>
-
-<!-- 2 · o caso ----------------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">O ponto de partida</div>
-      <h2>Ela sabe cozinhar. <b>Não sabe o que dá para vender.</b></h2>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O caso</div></div>
-  </div>
-  <div class="body">
-    <div class="stats">
-      <div class="stat"><div class="n">37</div><div class="u">Ingredientes na despensa</div></div>
-      <div class="stat"><div class="n">R$ 663<small>,39</small></div><div class="u">Já gastos nas compras</div></div>
-      <div class="stat"><div class="n">R$ 80<small>,00</small></div><div class="u">Sobrando para complementos</div></div>
-      <div class="stat"><div class="n">10<small>%</small></div><div class="u">Taxa da plataforma sobre a venda</div></div>
-    </div>
-    <div class="cols c3" style="margin-top:15px">
-      <div class="card">
-        <div class="card-h"><svg class="ic"><use href="#i-utensils"/></svg> O que fazer</div>
-        <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
-          Quais receitas cabem no que ela <b>já tem</b> — sem uma lista de compras
-          que ela não pode pagar.</div>
-      </div>
-      <div class="card">
-        <div class="card-h"><svg class="ic"><use href="#i-chef"/></svg> Se consegue fazer</div>
-        <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
-          Utensílios e técnica. Comprar ingrediente e descobrir depois que
-          <b>não dá para cozinhar</b> queima orçamento que ela não tem.</div>
-      </div>
-      <div class="card">
-        <div class="card-h"><svg class="ic"><use href="#i-scale"/></svg> Por quanto vender</div>
-        <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
-          Preço abaixo do custo <b>não dói na hora</b>. Dói no fim do mês,
-          quando já não dá para voltar atrás.</div>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-info"/></svg>
-      <span><b>Ela tem uma tentativa.</b>
-      R$ 80 não perdoam um cardápio errado — e é por isso que <b>garantir</b> vale mais
-      do que sugerir.</span></div>
-  </div>
-</section>
-
-<!-- 3 · o caso de uso ---------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">O caso de uso</div>
-      <h2>Uma conversa que vai da despensa <b>ao primeiro pedido</b></h2>
-      <div class="lede">Não é um formulário em etapas. O agente adapta a ordem à conversa —
-        e só avança quando tem o que precisa.</div>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">A jornada</div></div>
-  </div>
-  <div class="body">
-    <div class="fases">
-      <div class="fase">
-        <div class="fn">Fase 1</div>
-        <h4>Descobrir</h4>
-        <div class="fstep"><svg class="ic"><use href="#i-package"/></svg>
-          <b>Lê a despensa</b><small>37 ingredientes, com o custo real de cada um</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-globe"/></svg>
-          <b>Pesquisa receitas na web</b><small>Reais, com fonte, e que aproveitem o que ela já tem</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-help"/></svg>
-          <b>Pergunta o que falta saber</b><small>Fogão, forno, técnicas, tempo — e guarda a resposta</small></div>
-      </div>
-      <div class="fase">
-        <div class="fn">Fase 2</div>
-        <h4>Decidir</h4>
-        <div class="fstep"><svg class="ic"><use href="#i-shield"/></svg>
-          <b>Confere se ela consegue</b><small>Utensílio, técnica, ingrediente e orçamento</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-scale"/></svg>
-          <b>Calcula o custo e o preço</b><small>Com a taxa de 10% já embutida na conta</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-users"/></svg>
-          <b>Ela escolhe o preço</b><small>Três cenários de margem, e a decisão é dela</small></div>
-      </div>
-      <div class="fase">
-        <div class="fn">Fase 3</div>
-        <h4>Vender</h4>
-        <div class="fstep"><svg class="ic"><use href="#i-utensils"/></svg>
-          <b>Publica no cardápio</b><small>Quantas panelas ela consegue fazer hoje</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-cart"/></svg>
-          <b>O cliente pede</b><small>Um segundo bot, que só enxerga o cardápio</small></div>
-        <div class="fstep"><svg class="ic"><use href="#i-wallet"/></svg>
-          <b>O caixa cresce</b><small>Líquido da taxa — e financia a próxima compra</small></div>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-info"/></svg>
-      <span><b>A fase 3 vai além do que foi pedido.</b>
-      O enunciado termina no preço. Levar até a venda é o que mostra se a conta fecha na
-      prática — porque é o dinheiro que volta que dita o próximo prato.</span></div>
-  </div>
-</section>
-
-<!-- 4 · por que Hermes --------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">A escolha da base</div>
-      <h2>Você não desenha o fluxo. <b>Você define o agente.</b></h2>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">Hermes Agent</div></div>
-  </div>
-  <div class="body">
-    <div class="vs">
-      <div class="vsc">
-        <div class="vt">Framework de orquestração</div>
-        <h4>Você constrói a cadeia</h4>
-        <p>O grafo, o prompt de cada nó, o roteamento entre eles e as condições de parada.
-          E junto vem tudo o que não é o problema — <b>memória, sessão, canal de entrada,
-          retomada, histórico</b>. Mudou a ordem da conversa, mudou o código.</p>
-      </div>
-      <div class="vsc alt">
-        <div class="vt">Hermes Agent</div>
-        <h4>A plataforma já existe</h4>
-        <p>Você define <b>quem</b> é o agente, <b>o que</b> ele pode fazer e <b>o que</b> ele sabe.
-          A rota é dele. Uma conversa que muda de assunto e volta atrás não quebra nada,
-          porque não havia um trilho de onde sair.</p>
-      </div>
-    </div>
-    <div class="gains">
-      <div class="gain"><svg class="ic"><use href="#i-route"/></svg>
-        <b>Conversa não-linear de fábrica</b>
-        <span>O enunciado pede isso em letras: "não precisa ser linear — ele adapta a conversa".</span></div>
-      <div class="gain"><svg class="ic"><use href="#i-brain"/></svg>
-        <b>Memória entre sessões</b>
-        <span>Ela fecha o Telegram e volta amanhã. O que já foi respondido não é perguntado de novo.</span></div>
-      <div class="gain"><svg class="ic"><use href="#i-layers"/></svg>
-        <b>Conhecimento sob demanda</b>
-        <span>O procedimento entra no contexto só quando ele decide usá-lo. O custo acompanha a necessidade.</span></div>
-      <div class="gain"><svg class="ic"><use href="#i-plug"/></svg>
-        <b>Extensão por protocolo aberto</b>
-        <span>As ferramentas do negócio entram por MCP, e as garantias por hooks — sem tocar no núcleo.</span></div>
-    </div>
-    <div class="band dark"><svg class="ic"><use href="#i-zap"/></svg>
-      <span><b>O que sobrou para construir foi só o que é do negócio.</b>
-      A régua de custo, as garantias e a persona. Nenhuma linha gasta com sessão, roteamento
-      ou histórico — e é aí que sete dias viram profundidade em vez de encanamento.</span></div>
-  </div>
-</section>
-
-<!-- 5 · a conta do delivery --------------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">A conta do delivery</div>
-      <h2>Ela não recebe o que o cliente paga. <b>Recebe 90% disso.</b></h2>
-      <div class="lede">O caminho de uma marmita. Números redondos de propósito, para a
-        conta ficar visível de uma olhada.</div>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">A conta</div></div>
-  </div>
-  <div class="body">
-    <div class="rota">
-      <div class="rp custo">
-        <div class="ri"><svg class="ic"><use href="#i-package"/></svg></div>
-        <b>O prato custa</b><div class="rv">R$ 6,00</div>
-        <span>de ingrediente, por marmita</span></div>
-      <div class="rp">
-        <div class="ri"><svg class="ic"><use href="#i-chef"/></svg></div>
-        <b>Ela põe à venda</b><div class="rv">R$ 20,00</div>
-        <span>o preço é escolha dela</span></div>
-      <div class="rp">
-        <div class="ri"><svg class="ic"><use href="#i-cart"/></svg></div>
-        <b>O cliente paga</b><div class="rv">R$ 20,00</div>
-        <span>o valor cheio do cardápio</span></div>
-      <div class="rp taxa">
-        <div class="ri"><svg class="ic"><use href="#i-scale"/></svg></div>
-        <b>A plataforma leva</b><div class="rv">− R$ 2,00</div>
-        <span>10% da venda — chegam R$ 18,00 para ela</span></div>
-      <div class="rp sobra">
-        <div class="ri"><svg class="ic"><use href="#i-wallet"/></svg></div>
-        <b>Sobra para ela</b><div class="rv">R$ 12,00</div>
-        <span>os R$ 18,00 menos os R$ 6,00 do ingrediente</span></div>
-    </div>
-    <div class="pcap" style="margin-top:15px">
-      <div class="pt"><svg class="ic"><use href="#i-layers"/></svg> Os mesmos R$ 20,00, em porcentagem</div>
-      <div class="pd">É assim que ela entende, sem fazer conta</div>
-    </div>
-    <div class="pbar">
-      <div class="pseg comida"><div class="pv">30%</div><div class="pl">Comida</div>
-        <div class="ps">R$ 6,00</div></div>
-      <div class="pseg taxa"><div class="pv">10%</div><div class="pl">Taxa</div>
-        <div class="ps">R$ 2,00</div></div>
-      <div class="pseg margem"><div class="pv">60%</div><div class="pl">Margem · R$ 12,00</div>
-        <div class="ps">30 de comida mais 10 de taxa são 40 — então sobram 60 para ela</div></div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-shield"/></svg>
-      <span><b>Existe um piso, e ele não é negociável.</b>
-      Se os 90% que chegam não cobrem o ingrediente, ela está pagando para trabalhar.
-      O agente propõe <b>três cenários</b> de margem acima desse piso — e quem escolhe qual
-      adotar é ela.</span></div>
-  </div>
-</section>
-
-<!-- 6 · por que existe uma carga ------------------------------------------ -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">A carga dos dados</div>
-      <h2>O custo não está na planilha. <b>Ele é derivado dela.</b></h2>
-      <div class="lede">Dividir o que ela pagou pelo que levou <b>parece</b> o custo. Em 31 dos
-        37 itens é. Nos outros 6, a coluna <code>Unidade</code> traz a <b>embalagem</b> —
-        e o erro vai para os dois lados.</div>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O ETL</div></div>
-  </div>
-  <div class="body">
-    <div class="dirs">
-      <div class="dir up">
-        <div class="dh"><svg class="ic"><use href="#i-trend"/></svg> Embalagem maior que a medida</div>
-        <h4>Superestima o custo</h4>
-        <div class="sd">O balde tem 2 kg. Tratar o balde como se fosse um quilo <b>dobra</b>
-          o preço do ingrediente.</div>
-        <div class="ex">
-          <div class="exl"><span class="en">Alcaparras</span>
-            <span class="ev">R$ 82,00</span><span class="er">R$ 41,00 / kg</span>
-            <span class="ef">2× a mais</span></div>
+    <!-- 1 · capa ------------------------------------------------------------- -->
+    <section class="slide cover on">
+      <div class="inner">
+        <div class="tag"><svg class="ic">
+            <use href="#i-utensils" />
+          </svg> Desafio Técnico · Senior AI Software Engineer</div>
+        <h1>Sabor <b>da Maria</b></h1>
+        <div class="sub">Um agente que leva a Dona Maria da despensa ao cardápio de lançamento —
+          e depois até a primeira venda.</div>
+        <div class="rule"></div>
+        <div class="who">João Cioffi</div>
+        <div class="whor">Setembro de 2026</div>
+        <div class="ct">
+          <a href="https://github.com/JoaoCioffi/desafio-tecnico-ifood"><svg class="ic">
+              <use href="#i-github" />
+            </svg> github.com/JoaoCioffi/desafio-tecnico-ifood</a>
+          <a href="https://www.linkedin.com/in/joao-cioffi/"><svg class="ic">
+              <use href="#i-linkedin" />
+            </svg> linkedin.com/in/joao-cioffi</a>
+          <a href="mailto:joaorcioffi@gmail.com"><svg class="ic">
+              <use href="#i-mail" />
+            </svg> joaorcioffi@gmail.com</a>
+          <span><svg class="ic">
+              <use href="#i-phone" />
+            </svg> +55 16 99604-8599</span>
         </div>
-        <div class="conseq"><b>O prato bom parece caro e é descartado.</b>
-          E o balde de R$ 82 continua parado na prateleira, virando prejuízo silencioso.</div>
-      </div>
-      <div class="dir down">
-        <div class="dh"><svg class="ic"><use href="#i-down"/></svg> Embalagem menor que a medida</div>
-        <h4>Subestima o custo</h4>
-        <div class="sd">O frasco tem 100 ml. Tratar o frasco como se fosse um litro
-          <b>divide por dez</b> o preço do ingrediente.</div>
-        <div class="ex">
-          <div class="exl"><span class="en">Adoçante líquido</span>
-            <span class="ev">R$ 1,90</span><span class="er">R$ 19,00 / L</span>
-            <span class="ef">10× a menos</span></div>
-          <div class="exl"><span class="en">Azeite de oliva</span>
-            <span class="ev">R$ 30,99</span><span class="er">R$ 61,98 / L</span>
-            <span class="ef">2× a menos</span></div>
-        </div>
-        <div class="conseq"><b>O preço sai barato e ela vende no prejuízo.</b>
-          Cada marmita tira dinheiro do caixa, e a conta só aparece no fim do mês.</div>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-alert"/></svg>
-      <span><b>São R$ 166,73 mal contados — um quarto de tudo que ela gastou.</b>
-      Por isso a planilha passa por uma <b>carga</b> antes de qualquer conversa: cada item é
-      convertido para quilo, litro ou unidade real. O custo chega pronto, e a conversão
-      nunca acontece no meio de um papo.</span></div>
-  </div>
-</section>
-
-<!-- 7 · arquitetura ------------------------------------------------------ -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">Arquitetura</div>
-      <h2>Dois agentes, um servidor de ferramentas, <b>um banco</b></h2>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">Arquitetura</div></div>
-  </div>
-  <div class="body">
-    <div class="arch">
-      <div class="tier t3">
-        <div class="node"><svg class="ic"><use href="#i-send"/></svg>
-          <div><b>Telegram · Dona Maria</b><small>@sabor_da_maria_delivery_bot</small></div></div>
-        <div class="node"><svg class="ic"><use href="#i-send"/></svg>
-          <div><b>Telegram · Cliente</b><small>@borapedir_bot</small></div></div>
-        <div class="node"><svg class="ic"><use href="#i-globe"/></svg>
-          <div><b>Busca na web</b><small>receitas reais, com fonte</small></div></div>
-      </div>
-      <div class="arrow"><svg class="ic"><use href="#i-arrow"/></svg></div>
-      <div class="zone">
-        <div class="zl">docker compose · rede interna · sobe com um comando</div>
-        <div class="tier t2">
-          <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>Hermes · consultora</b><small>conversa com a Dona Maria e conduz a decisão</small></div>
-            <span class="tag pill ai">Agente</span></div>
-          <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>Hermes · balcão</b><small>atende quem faz o pedido</small></div>
-            <span class="tag pill ai">Agente</span></div>
-        </div>
-        <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg> protocolo aberto de ferramentas</div>
-        <div class="tier t3">
-          <div class="node gate"><svg class="ic"><use href="#i-shield"/></svg>
-            <div><b>Gate de viabilidade</b><small>roda antes, e o modelo não o alcança</small></div></div>
-          <div class="node" style="grid-column:2 / 4"><svg class="ic"><use href="#i-server"/></svg>
-            <div><b>Servidor MCP</b><small>custo, preço, estoque e orçamento</small></div>
-            <span class="tag pill det">Determinístico</span></div>
-        </div>
-        <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg></div>
-        <div class="tier t2">
-          <div class="node data"><svg class="ic"><use href="#i-db"/></svg>
-            <div><b>PostgreSQL</b><small>onde os dois agentes se encontram</small></div></div>
-          <div class="node"><svg class="ic"><use href="#i-term"/></svg>
-            <div><b>Painéis ao vivo</b><small>carga da planilha e observabilidade</small></div></div>
+        <div class="meta">
+          <div>Base<b>Hermes Agent · Nous Research</b></div>
+          <div>Entrega<b>Repositório + demo ao vivo</b></div>
+          <div>Escopo<b>Despensa → cardápio → caixa</b></div>
         </div>
       </div>
-      <div class="leg">
-        <span><i class="ai"></i>Agente</span>
-        <span><i class="det"></i>Determinístico</span>
-        <span><i class="gate"></i>Garantia</span>
-        <span><i class="data"></i>Estado</span>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-info"/></svg>
-      <span><b>Os dois agentes nunca trocam mensagem.</b>
-      Coordenam pelo banco, através do mesmo servidor de ferramentas — com listas diferentes
-      do que cada um pode fazer. Não há protocolo entre agentes para desenhar e manter:
-      <b>há um esquema</b>.</span></div>
-  </div>
-</section>
+    </section>
 
-<!-- 8 · o ciclo de caixa -------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">Do cardápio ao caixa</div>
-      <h2>O dinheiro que volta <b>paga o próximo prato</b></h2>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O ciclo</div></div>
-  </div>
-  <div class="body">
-    <div class="ciclo">
-      <div class="cx">
-        <div class="ci"><svg class="ic"><use href="#i-wallet"/></svg></div>
-        <b>Orçamento</b><div class="cv">R$ 80,00</div>
-        <span>Para comprar o que falta</span></div>
-      <div class="cx">
-        <div class="ci"><svg class="ic"><use href="#i-utensils"/></svg></div>
-        <b>Publica</b><div class="cv">2 lotes</div>
-        <span>O que ela consegue cozinhar hoje</span></div>
-      <div class="cx">
-        <div class="ci"><svg class="ic"><use href="#i-cart"/></svg></div>
-        <b>Cliente pede</b><div class="cv">R$ 95,50</div>
-        <span>Cinco porções, dois pratos</span></div>
-      <div class="cx">
-        <div class="ci"><svg class="ic"><use href="#i-scale"/></svg></div>
-        <b>Taxa 10%</b><div class="cv">− R$ 9,55</div>
-        <span>Nunca foi dela</span></div>
-      <div class="cx fim">
-        <div class="ci"><svg class="ic"><use href="#i-trend"/></svg></div>
-        <b>Caixa</b><div class="cv">R$ 148,01</div>
-        <span>E agora dá para comprar mais</span></div>
-    </div>
-    <div class="guards">
-      <div class="guard">
-        <div class="gh"><svg class="ic"><use href="#i-lock"/></svg><b>Só vende o que está no cardápio</b></div>
-        <p>O cliente não pede o que ela não publicou — nem descrevendo, nem insistindo.
-          O cardápio é a única fonte.</p>
-        <div class="gv">Nada fora do cardápio</div>
-      </div>
-      <div class="guard">
-        <div class="gh"><svg class="ic"><use href="#i-boxes"/></svg><b>Só vende o que existe</b></div>
-        <p>Publicar 2 panelas reserva o ingrediente de 2 panelas. Ninguém compra a porção
-          que já foi vendida.</p>
-        <div class="gv">12 pedidos → 7 aceitos, 5 recusados</div>
-      </div>
-      <div class="guard">
-        <div class="gh"><svg class="ic"><use href="#i-users"/></svg><b>Não negocia preço</b></div>
-        <p>O balcão não tem onde digitar um valor. O preço vem do cardápio, e quem o
-          definiu foi a Dona Maria.</p>
-        <div class="gv">Desconto: não existe o caminho</div>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-info"/></svg>
-      <span><b>Nada é descontado à mão em lugar nenhum.</b>
-      Estoque e saldo são <b>conta</b>, não anotação. Se ela desistir de um prato, o
-      ingrediente e o dinheiro voltam sozinhos — não há acerto manual para alguém esquecer.</span></div>
-  </div>
-</section>
-
-<!-- 9 · a demonstração ---------------------------------------------------- -->
-<section class="slide">
-  <div class="sh">
-    <div>
-      <div class="kick">A demonstração</div>
-      <h2>Dois chats lado a lado, <b>e o sistema ao vivo entre eles</b></h2>
-      <div class="lede">O mesmo roteiro que está no repositório. Os momentos que interessam são
-        aqueles em que o sistema diz não — e diz com um número sobre o qual dá para decidir.</div>
-    </div>
-    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O teste</div></div>
-  </div>
-  <div class="body">
-    <div class="lanes">
-      <div class="lane her">
-        <div class="lh"><svg class="ic"><use href="#i-chef"/></svg> Dona Maria
-          <em>@sabor_da_maria_delivery_bot</em></div>
-        <div class="steps s4">
-          <div class="step"><span class="sn">01</span><b>Chega sem saber</b>
-            <span>O agente lê a despensa e aponta o que está parado e caro.</span></div>
-          <div class="step"><span class="sn">02</span><b>Conta o que sabe fazer</b>
-            <span>Cozinheira experiente, cozinha completa.</span>
-            <span class="sp pill ok">Não pergunta de novo</span></div>
-          <div class="step"><span class="sn">03</span><b>Primeiro prato</b>
-            <span>Só com o que tem. Custo, três cenários, e ela escolhe.</span></div>
-          <div class="step"><span class="sn">04</span><b>Prato com compra</b>
-            <span>Pesquisa o preço na região; o orçamento cai sozinho.</span>
-            <span class="sp pill hum">Ela autoriza</span></div>
+    <!-- 2 · o caso ----------------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">O ponto de partida</div>
+          <h2>Ela sabe cozinhar. <b>Não sabe o que dá para vender.</b></h2>
         </div>
-        <div class="steps s3">
-          <div class="step"><span class="sn">05</span><b>Pede 9 panelas</b>
-            <span>Cabem 2 — e a resposta diz qual ingrediente limita.</span>
-            <span class="sp pill no">Recusa com número</span></div>
-          <div class="step" style="grid-column:2 / 4"><span class="sn">07</span><b>Vê as vendas</b>
-            <span>Recebe o líquido, não o bruto. E o caixa maior abre um prato que antes não cabia.</span>
-            <span class="sp pill ok">O ciclo fecha</span></div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">O caso</div>
         </div>
       </div>
-      <div class="lane cli">
-        <div class="lh"><svg class="ic"><use href="#i-cart"/></svg> O cliente
-          <em>@borapedir_bot</em></div>
-        <div class="steps s3">
-          <div class="step"><span class="sn">06a</span><b>Pergunta o cardápio</b>
-            <span>Só aparece o que ela publicou, com preço e porções.</span></div>
-          <div class="step"><span class="sn">06b</span><b>Tenta o que não pode</b>
-            <span>Estoque, orçamento, desconto. Não recusa por educação: não tem como.</span>
-            <span class="sp pill no">Sem acesso</span></div>
-          <div class="step"><span class="sn">06c</span><b>Pede 50 porções</b>
-            <span>Restam 12. Diz o número real e oferece o que existe.</span>
-            <span class="sp pill ok">Compra o que cabe</span></div>
+      <div class="body">
+        <div class="stats">
+          <div class="stat">
+            <div class="n">37</div>
+            <div class="u">Ingredientes na despensa</div>
+          </div>
+          <div class="stat">
+            <div class="n">R$ 663<small>,39</small></div>
+            <div class="u">Já gastos nas compras</div>
+          </div>
+          <div class="stat">
+            <div class="n">R$ 80<small>,00</small></div>
+            <div class="u">Sobrando para complementos</div>
+          </div>
+          <div class="stat">
+            <div class="n">10<small>%</small></div>
+            <div class="u">Taxa da plataforma sobre a venda</div>
+          </div>
+        </div>
+        <div class="cols c3" style="margin-top:15px">
+          <div class="card">
+            <div class="card-h"><svg class="ic">
+                <use href="#i-utensils" />
+              </svg> O que fazer</div>
+            <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
+              Quais receitas cabem no que ela <b>já tem</b> — sem uma lista de compras
+              que ela não pode pagar.</div>
+          </div>
+          <div class="card">
+            <div class="card-h"><svg class="ic">
+                <use href="#i-chef" />
+              </svg> Se consegue fazer</div>
+            <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
+              Utensílios e técnica. Comprar ingrediente e descobrir depois que
+              <b>não dá para cozinhar</b> queima orçamento que ela não tem.
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-h"><svg class="ic">
+                <use href="#i-scale" />
+              </svg> Por quanto vender</div>
+            <div style="font-size:13.4px;color:var(--ink);line-height:1.46;margin:auto 0">
+              Preço abaixo do custo <b>não dói na hora</b>. Dói no fim do mês,
+              quando já não dá para voltar atrás.</div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-info" />
+          </svg>
+          <span><b>Ela tem uma tentativa.</b>
+            R$ 80 não perdoam um cardápio errado — e é por isso que <b>garantir</b> vale mais
+            do que sugerir.</span>
         </div>
       </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-play"/></svg>
-      <span><b>Qualquer automação convence quando está tudo em ordem.</b>
-      O que merece atenção é se ela sabe a diferença entre <b>recusar</b> e <b>não saber</b> —
-      e se, ao recusar, devolve algo sobre o que a Dona Maria consiga decidir.</span></div>
+    </section>
+
+    <!-- 3 · o caso de uso ---------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">O caso de uso</div>
+          <h2>Uma conversa que vai da despensa <b>ao primeiro pedido</b></h2>
+          <div class="lede">Não é um formulário em etapas. O agente adapta a ordem à conversa —
+            e só avança quando tem o que precisa.</div>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">A jornada</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="fases">
+          <div class="fase">
+            <div class="fn">Fase 1</div>
+            <h4>Descobrir</h4>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-package" />
+              </svg>
+              <b>Lê a despensa</b><small>37 ingredientes, com o custo real de cada um</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-globe" />
+              </svg>
+              <b>Pesquisa receitas na web</b><small>Reais, com fonte, e que aproveitem o que ela já tem</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-help" />
+              </svg>
+              <b>Pergunta o que falta saber</b><small>Fogão, forno, técnicas, tempo — e guarda a resposta</small>
+            </div>
+          </div>
+          <div class="fase">
+            <div class="fn">Fase 2</div>
+            <h4>Decidir</h4>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-shield" />
+              </svg>
+              <b>Confere se ela consegue</b><small>Utensílio, técnica, ingrediente e orçamento</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-scale" />
+              </svg>
+              <b>Calcula o custo e o preço</b><small>Com a taxa de 10% já embutida na conta</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-users" />
+              </svg>
+              <b>Ela escolhe o preço</b><small>Três cenários de margem, e a decisão é dela</small>
+            </div>
+          </div>
+          <div class="fase">
+            <div class="fn">Fase 3</div>
+            <h4>Vender</h4>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-utensils" />
+              </svg>
+              <b>Publica no cardápio</b><small>Quantas panelas ela consegue fazer hoje</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-cart" />
+              </svg>
+              <b>O cliente pede</b><small>Um segundo bot, que só enxerga o cardápio</small>
+            </div>
+            <div class="fstep"><svg class="ic">
+                <use href="#i-wallet" />
+              </svg>
+              <b>O caixa cresce</b><small>Líquido da taxa — e financia a próxima compra</small>
+            </div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-info" />
+          </svg>
+          <span><b>A fase 3 vai além do que foi pedido.</b>
+            O enunciado termina no preço. Levar até a venda é o que mostra se a conta fecha na
+            prática — porque é o dinheiro que volta que dita o próximo prato.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 · por que Hermes --------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A escolha da base</div>
+          <h2>Você não desenha o fluxo. <b>Você define o agente.</b></h2>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">Hermes Agent</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="vs">
+          <div class="vsc">
+            <div class="vt">Framework de orquestração</div>
+            <h4>Você constrói a cadeia</h4>
+            <p>O grafo, o prompt de cada nó, o roteamento entre eles e as condições de parada.
+              E junto vem tudo o que não é o problema — <b>memória, sessão, canal de entrada,
+                retomada, histórico</b>. Mudou a ordem da conversa, mudou o código.</p>
+          </div>
+          <div class="vsc alt">
+            <div class="vt">Hermes Agent</div>
+            <h4>A plataforma já existe</h4>
+            <p>Você define <b>quem</b> é o agente, <b>o que</b> ele pode fazer e <b>o que</b> ele sabe.
+              A rota é dele. Uma conversa que muda de assunto e volta atrás não quebra nada,
+              porque não havia um trilho de onde sair.</p>
+          </div>
+        </div>
+        <div class="gains">
+          <div class="gain"><svg class="ic">
+              <use href="#i-route" />
+            </svg>
+            <b>Conversa não-linear de fábrica</b>
+            <span>O enunciado pede isso em letras: "não precisa ser linear — ele adapta a conversa".</span>
+          </div>
+          <div class="gain"><svg class="ic">
+              <use href="#i-brain" />
+            </svg>
+            <b>Memória entre sessões</b>
+            <span>Ela fecha o Telegram e volta amanhã. O que já foi respondido não é perguntado de novo.</span>
+          </div>
+          <div class="gain"><svg class="ic">
+              <use href="#i-layers" />
+            </svg>
+            <b>Conhecimento sob demanda</b>
+            <span>O procedimento entra no contexto só quando ele decide usá-lo. O custo acompanha a necessidade.</span>
+          </div>
+          <div class="gain"><svg class="ic">
+              <use href="#i-plug" />
+            </svg>
+            <b>Extensão por protocolo aberto</b>
+            <span>As ferramentas do negócio entram por MCP, e as garantias por hooks — sem tocar no núcleo.</span>
+          </div>
+        </div>
+        <div class="band dark"><svg class="ic">
+            <use href="#i-zap" />
+          </svg>
+          <span><b>O que sobrou para construir foi só o que é do negócio.</b>
+            A régua de custo, as garantias e a persona. Nenhuma linha gasta com sessão, roteamento
+            ou histórico — e é aí que sete dias viram profundidade em vez de encanamento.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 · a conta do delivery --------------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A conta do delivery</div>
+          <h2>Ela não recebe o que o cliente paga. <b>Recebe 90% disso.</b></h2>
+          <div class="lede">O caminho de uma marmita. Números redondos de propósito, para a
+            conta ficar visível de uma olhada.</div>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">A conta</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="rota">
+          <div class="rp custo">
+            <div class="ri"><svg class="ic">
+                <use href="#i-package" />
+              </svg></div>
+            <b>O prato custa</b>
+            <div class="rv">R$ 6,00</div>
+            <span>de ingrediente, por marmita</span>
+          </div>
+          <div class="rp">
+            <div class="ri"><svg class="ic">
+                <use href="#i-chef" />
+              </svg></div>
+            <b>Ela põe à venda</b>
+            <div class="rv">R$ 20,00</div>
+            <span>o preço é escolha dela</span>
+          </div>
+          <div class="rp">
+            <div class="ri"><svg class="ic">
+                <use href="#i-cart" />
+              </svg></div>
+            <b>O cliente paga</b>
+            <div class="rv">R$ 20,00</div>
+            <span>o valor cheio do cardápio</span>
+          </div>
+          <div class="rp taxa">
+            <div class="ri"><svg class="ic">
+                <use href="#i-scale" />
+              </svg></div>
+            <b>A plataforma leva</b>
+            <div class="rv">− R$ 2,00</div>
+            <span>10% da venda — chegam R$ 18,00 para ela</span>
+          </div>
+          <div class="rp sobra">
+            <div class="ri"><svg class="ic">
+                <use href="#i-wallet" />
+              </svg></div>
+            <b>Sobra para ela</b>
+            <div class="rv">R$ 12,00</div>
+            <span>os R$ 18,00 menos os R$ 6,00 do ingrediente</span>
+          </div>
+        </div>
+        <div class="pcap" style="margin-top:15px">
+          <div class="pt"><svg class="ic">
+              <use href="#i-layers" />
+            </svg> Os mesmos R$ 20,00, em porcentagem</div>
+          <div class="pd">É assim que ela entende, sem fazer conta</div>
+        </div>
+        <div class="pbar">
+          <div class="pseg comida">
+            <div class="pv">30%</div>
+            <div class="pl">Comida</div>
+            <div class="ps">R$ 6,00</div>
+          </div>
+          <div class="pseg taxa">
+            <div class="pv">10%</div>
+            <div class="pl">Taxa</div>
+            <div class="ps">R$ 2,00</div>
+          </div>
+          <div class="pseg margem">
+            <div class="pv">60%</div>
+            <div class="pl">Margem · R$ 12,00</div>
+            <div class="ps">30 de comida mais 10 de taxa são 40 — então sobram 60 para ela</div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-shield" />
+          </svg>
+          <span><b>Existe um piso, e ele não é negociável.</b>
+            Se os 90% que chegam não cobrem o ingrediente, ela está pagando para trabalhar.
+            O agente propõe <b>três cenários</b> de margem acima desse piso — e quem escolhe qual
+            adotar é ela.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 · por que existe uma carga ------------------------------------------ -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A carga dos dados</div>
+          <h2>O custo não está na planilha. <b>Ele é derivado dela.</b></h2>
+          <div class="lede">Dividir o que ela pagou pelo que levou <b>parece</b> o custo. Em 31 dos
+            37 itens é. Nos outros 6, a coluna <code>Unidade</code> traz a <b>embalagem</b> —
+            e o erro vai para os dois lados.</div>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">O ETL</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="dirs">
+          <div class="dir up">
+            <div class="dh"><svg class="ic">
+                <use href="#i-trend" />
+              </svg> Embalagem maior que a medida</div>
+            <h4>Superestima o custo</h4>
+            <div class="sd">O balde tem 2 kg. Tratar o balde como se fosse um quilo <b>dobra</b>
+              o preço do ingrediente.</div>
+            <div class="ex">
+              <div class="exl"><span class="en">Alcaparras</span>
+                <span class="ev">R$ 82,00</span><span class="er">R$ 41,00 / kg</span>
+                <span class="ef">2× a mais</span>
+              </div>
+            </div>
+            <div class="conseq"><b>O prato bom parece caro e é descartado.</b>
+              E o balde de R$ 82 continua parado na prateleira, virando prejuízo silencioso.</div>
+          </div>
+          <div class="dir down">
+            <div class="dh"><svg class="ic">
+                <use href="#i-down" />
+              </svg> Embalagem menor que a medida</div>
+            <h4>Subestima o custo</h4>
+            <div class="sd">O frasco tem 100 ml. Tratar o frasco como se fosse um litro
+              <b>divide por dez</b> o preço do ingrediente.
+            </div>
+            <div class="ex">
+              <div class="exl"><span class="en">Adoçante líquido</span>
+                <span class="ev">R$ 1,90</span><span class="er">R$ 19,00 / L</span>
+                <span class="ef">10× a menos</span>
+              </div>
+              <div class="exl"><span class="en">Azeite de oliva</span>
+                <span class="ev">R$ 30,99</span><span class="er">R$ 61,98 / L</span>
+                <span class="ef">2× a menos</span>
+              </div>
+            </div>
+            <div class="conseq"><b>O preço sai barato e ela vende no prejuízo.</b>
+              Cada marmita tira dinheiro do caixa, e a conta só aparece no fim do mês.</div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-alert" />
+          </svg>
+          <span><b>São R$ 166,73 mal contados — um quarto de tudo que ela gastou.</b>
+            Por isso a planilha passa por uma <b>carga</b> antes de qualquer conversa: cada item é
+            convertido para quilo, litro ou unidade real. O custo chega pronto, e a conversão
+            nunca acontece no meio de um papo.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 · arquitetura ------------------------------------------------------ -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">Arquitetura</div>
+          <h2>Dois agentes, um servidor de ferramentas, <b>um banco</b></h2>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">Arquitetura</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="arch">
+          <div class="tier t3">
+            <div class="node"><svg class="ic">
+                <use href="#i-send" />
+              </svg>
+              <div><b>Telegram · Dona Maria</b><small>@sabor_da_maria_delivery_bot</small></div>
+            </div>
+            <div class="node"><svg class="ic">
+                <use href="#i-send" />
+              </svg>
+              <div><b>Telegram · Cliente</b><small>@borapedir_bot</small></div>
+            </div>
+            <div class="node"><svg class="ic">
+                <use href="#i-globe" />
+              </svg>
+              <div><b>Busca na web</b><small>receitas reais, com fonte</small></div>
+            </div>
+          </div>
+          <div class="arrow"><svg class="ic">
+              <use href="#i-arrow" />
+            </svg></div>
+          <div class="zone">
+            <div class="zl">docker compose · rede interna · sobe com um comando</div>
+            <div class="tier t2">
+              <div class="node ai"><svg class="ic">
+                  <use href="#i-bot" />
+                </svg>
+                <div><b>Hermes · consultora</b><small>conversa com a Dona Maria e conduz a decisão</small></div>
+                <span class="tag pill ai">Agente</span>
+              </div>
+              <div class="node ai"><svg class="ic">
+                  <use href="#i-bot" />
+                </svg>
+                <div><b>Hermes · balcão</b><small>atende quem faz o pedido</small></div>
+                <span class="tag pill ai">Agente</span>
+              </div>
+            </div>
+            <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic">
+                <use href="#i-arrow" />
+              </svg> protocolo aberto de ferramentas</div>
+            <div class="tier t3">
+              <div class="node gate"><svg class="ic">
+                  <use href="#i-shield" />
+                </svg>
+                <div><b>Gate de viabilidade</b><small>roda antes, e o modelo não o alcança</small></div>
+              </div>
+              <div class="node" style="grid-column:2 / 4"><svg class="ic">
+                  <use href="#i-server" />
+                </svg>
+                <div><b>Servidor MCP</b><small>custo, preço, estoque e orçamento</small></div>
+                <span class="tag pill det">Determinístico</span>
+              </div>
+            </div>
+            <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic">
+                <use href="#i-arrow" />
+              </svg></div>
+            <div class="tier t2">
+              <div class="node data"><svg class="ic">
+                  <use href="#i-db" />
+                </svg>
+                <div><b>PostgreSQL</b><small>onde os dois agentes se encontram</small></div>
+              </div>
+              <div class="node"><svg class="ic">
+                  <use href="#i-term" />
+                </svg>
+                <div><b>Painéis ao vivo</b><small>carga da planilha e observabilidade</small></div>
+              </div>
+            </div>
+          </div>
+          <div class="leg">
+            <span><i class="ai"></i>Agente</span>
+            <span><i class="det"></i>Determinístico</span>
+            <span><i class="gate"></i>Garantia</span>
+            <span><i class="data"></i>Estado</span>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-info" />
+          </svg>
+          <span><b>Os dois agentes nunca trocam mensagem.</b>
+            Coordenam pelo banco, através do mesmo servidor de ferramentas — com listas diferentes
+            do que cada um pode fazer. Não há protocolo entre agentes para desenhar e manter:
+            <b>há um esquema</b>.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 · o ciclo de caixa -------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">Do cardápio ao caixa</div>
+          <h2>O dinheiro que volta <b>paga o próximo prato</b></h2>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">O ciclo</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="ciclo">
+          <div class="cx">
+            <div class="ci"><svg class="ic">
+                <use href="#i-wallet" />
+              </svg></div>
+            <b>Orçamento</b>
+            <div class="cv">R$ 80,00</div>
+            <span>Para comprar o que falta</span>
+          </div>
+          <div class="cx">
+            <div class="ci"><svg class="ic">
+                <use href="#i-utensils" />
+              </svg></div>
+            <b>Publica</b>
+            <div class="cv">2 lotes</div>
+            <span>O que ela consegue cozinhar hoje</span>
+          </div>
+          <div class="cx">
+            <div class="ci"><svg class="ic">
+                <use href="#i-cart" />
+              </svg></div>
+            <b>Cliente pede</b>
+            <div class="cv">R$ 95,50</div>
+            <span>Cinco porções, dois pratos</span>
+          </div>
+          <div class="cx">
+            <div class="ci"><svg class="ic">
+                <use href="#i-scale" />
+              </svg></div>
+            <b>Taxa 10%</b>
+            <div class="cv">− R$ 9,55</div>
+            <span>Nunca foi dela</span>
+          </div>
+          <div class="cx fim">
+            <div class="ci"><svg class="ic">
+                <use href="#i-trend" />
+              </svg></div>
+            <b>Caixa</b>
+            <div class="cv">R$ 148,01</div>
+            <span>E agora dá para comprar mais</span>
+          </div>
+        </div>
+        <div class="guards">
+          <div class="guard">
+            <div class="gh"><svg class="ic">
+                <use href="#i-lock" />
+              </svg><b>Só vende o que está no cardápio</b></div>
+            <p>O cliente não pede o que ela não publicou — nem descrevendo, nem insistindo.
+              O cardápio é a única fonte.</p>
+            <div class="gv">Nada fora do cardápio</div>
+          </div>
+          <div class="guard">
+            <div class="gh"><svg class="ic">
+                <use href="#i-boxes" />
+              </svg><b>Só vende o que existe</b></div>
+            <p>Publicar 2 panelas reserva o ingrediente de 2 panelas. Ninguém compra a porção
+              que já foi vendida.</p>
+            <div class="gv">12 pedidos → 7 aceitos, 5 recusados</div>
+          </div>
+          <div class="guard">
+            <div class="gh"><svg class="ic">
+                <use href="#i-users" />
+              </svg><b>Não negocia preço</b></div>
+            <p>O balcão não tem onde digitar um valor. O preço vem do cardápio, e quem o
+              definiu foi a Dona Maria.</p>
+            <div class="gv">Desconto: não existe o caminho</div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-info" />
+          </svg>
+          <span><b>Nada é descontado à mão em lugar nenhum.</b>
+            Estoque e saldo são <b>conta</b>, não anotação. Se ela desistir de um prato, o
+            ingrediente e o dinheiro voltam sozinhos — não há acerto manual para alguém esquecer.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9 · a demonstração ---------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A demonstração</div>
+          <h2>Dois chats lado a lado, <b>e o sistema ao vivo entre eles</b></h2>
+          <div class="lede">O mesmo roteiro que está no repositório. Os momentos que interessam são
+            aqueles em que o sistema diz não — e diz com um número sobre o qual dá para decidir.</div>
+        </div>
+        <div class="mark">
+          <div class="nm">Sabor da Maria</div>
+          <div class="rl">O teste</div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="lanes">
+          <div class="lane her">
+            <div class="lh"><svg class="ic">
+                <use href="#i-chef" />
+              </svg> Dona Maria
+              <em>@sabor_da_maria_delivery_bot</em>
+            </div>
+            <div class="steps s4">
+              <div class="step"><span class="sn">01</span><b>Chega sem saber</b>
+                <span>O agente lê a despensa e aponta o que está parado e caro.</span>
+              </div>
+              <div class="step"><span class="sn">02</span><b>Conta o que sabe fazer</b>
+                <span>Cozinheira experiente, cozinha completa.</span>
+                <span class="sp pill ok">Não pergunta de novo</span>
+              </div>
+              <div class="step"><span class="sn">03</span><b>Primeiro prato</b>
+                <span>Só com o que tem. Custo, três cenários, e ela escolhe.</span>
+              </div>
+              <div class="step"><span class="sn">04</span><b>Prato com compra</b>
+                <span>Pesquisa o preço na região; o orçamento cai sozinho.</span>
+                <span class="sp pill hum">Ela autoriza</span>
+              </div>
+            </div>
+            <div class="steps s3">
+              <div class="step"><span class="sn">05</span><b>Pede 9 panelas</b>
+                <span>Cabem 2 — e a resposta diz qual ingrediente limita.</span>
+                <span class="sp pill no">Recusa com número</span>
+              </div>
+              <div class="step" style="grid-column:2 / 4"><span class="sn">07</span><b>Vê as vendas</b>
+                <span>Recebe o líquido, não o bruto. E o caixa maior abre um prato que antes não cabia.</span>
+                <span class="sp pill ok">O ciclo fecha</span>
+              </div>
+            </div>
+          </div>
+          <div class="lane cli">
+            <div class="lh"><svg class="ic">
+                <use href="#i-cart" />
+              </svg> O cliente
+              <em>@borapedir_bot</em>
+            </div>
+            <div class="steps s3">
+              <div class="step"><span class="sn">06a</span><b>Pergunta o cardápio</b>
+                <span>Só aparece o que ela publicou, com preço e porções.</span>
+              </div>
+              <div class="step"><span class="sn">06b</span><b>Tenta o que não pode</b>
+                <span>Estoque, orçamento, desconto. Não recusa por educação: não tem como.</span>
+                <span class="sp pill no">Sem acesso</span>
+              </div>
+              <div class="step"><span class="sn">06c</span><b>Pede 50 porções</b>
+                <span>Restam 12. Diz o número real e oferece o que existe.</span>
+                <span class="sp pill ok">Compra o que cabe</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="band"><svg class="ic">
+            <use href="#i-play" />
+          </svg>
+          <span><b>Qualquer automação convence quando está tudo em ordem.</b>
+            O que merece atenção é se ela sabe a diferença entre <b>recusar</b> e <b>não saber</b> —
+            e se, ao recusar, devolve algo sobre o que a Dona Maria consiga decidir.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 · fecho ------------------------------------------------------------- -->
+    <section class="slide close">
+      <div class="inner">
+        <div class="kick" style="color:#9E9297">Obrigado</div>
+        <h2>O agente conduz a conversa.<br><b>O sistema garante a conta.</b></h2>
+        <div class="sub">Clone o repositório e rode um comando: a configuração é versionada, a
+          planilha é carregada e os dois agentes sobem prontos — sem nada para responder na
+          instalação. O README traz as decisões de arquitetura, o porquê de cada uma e o que
+          viria a seguir.</div>
+        <div class="ct">
+          <a href="https://github.com/JoaoCioffi/desafio-tecnico-ifood"><svg class="ic">
+              <use href="#i-github" />
+            </svg> github.com/JoaoCioffi/desafio-tecnico-ifood</a>
+          <a href="https://www.linkedin.com/in/joao-cioffi/"><svg class="ic">
+              <use href="#i-linkedin" />
+            </svg> linkedin.com/in/joao-cioffi</a>
+          <a href="mailto:joaorcioffi@gmail.com"><svg class="ic">
+              <use href="#i-mail" />
+            </svg> joaorcioffi@gmail.com</a>
+          <span><svg class="ic">
+              <use href="#i-phone" />
+            </svg> +55 16 99604-8599</span>
+        </div>
+        <div style="margin-top:34px;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.4px">João Cioffi</div>
+      </div>
+    </section>
+
   </div>
-</section>
 
-<!-- 10 · fecho ------------------------------------------------------------- -->
-<section class="slide close">
-  <div class="inner">
-    <div class="kick" style="color:#9E9297">Obrigado</div>
-    <h2>O agente conduz a conversa.<br><b>O sistema garante a conta.</b></h2>
-    <div class="sub">Clone o repositório e rode um comando: a configuração é versionada, a
-      planilha é carregada e os dois agentes sobem prontos — sem nada para responder na
-      instalação. O README traz as decisões de arquitetura, o porquê de cada uma e o que
-      viria a seguir.</div>
-    <div class="ct">
-      <a href="https://github.com/JoaoCioffi/desafio-tecnico-ifood"><svg class="ic"><use href="#i-github"/></svg> github.com/JoaoCioffi/desafio-tecnico-ifood</a>
-      <a href="https://www.linkedin.com/in/joao-cioffi/"><svg class="ic"><use href="#i-linkedin"/></svg> linkedin.com/in/joao-cioffi</a>
-      <a href="mailto:joaorcioffi@gmail.com"><svg class="ic"><use href="#i-mail"/></svg> joaorcioffi@gmail.com</a>
-      <span><svg class="ic"><use href="#i-phone"/></svg> +55 16 99604-8599</span>
-    </div>
-    <div style="margin-top:34px;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.4px">João Cioffi</div>
-  </div>
-</section>
+  <div class="dots"><i id="prog"></i></div>
+  <div class="hint">← → para navegar</div>
+  <nav class="nav">
+    <button id="prev" aria-label="Anterior"><svg class="ic">
+        <use href="#i-left" />
+      </svg></button>
+    <span class="count" id="count">1 / 10</span>
+    <button id="next" aria-label="Próximo"><svg class="ic">
+        <use href="#i-right" />
+      </svg></button>
+  </nav>
 
-</div>
-
-<div class="dots"><i id="prog"></i></div>
-<div class="hint">← → para navegar</div>
-<nav class="nav">
-  <button id="prev" aria-label="Anterior"><svg class="ic"><use href="#i-left"/></svg></button>
-  <span class="count" id="count">1 / 10</span>
-  <button id="next" aria-label="Próximo"><svg class="ic"><use href="#i-right"/></svg></button>
-</nav>
-
-<script>
-var slides = document.querySelectorAll('.slide');
-var i = 0;
-function show(n){
-  i = Math.max(0, Math.min(slides.length-1, n));
-  slides.forEach(function(s,k){ s.classList.toggle('on', k===i); });
-  document.getElementById('count').textContent = (i+1)+' / '+slides.length;
-  document.getElementById('prev').disabled = i===0;
-  document.getElementById('next').disabled = i===slides.length-1;
-  document.getElementById('prog').style.width = ((i+1)/slides.length*100)+'%';
-}
-document.getElementById('prev').onclick = function(){ show(i-1); };
-document.getElementById('next').onclick = function(){ show(i+1); };
-document.addEventListener('keydown', function(e){
-  if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){ e.preventDefault(); show(i+1); }
-  if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); show(i-1); }
-  if(e.key==='Home'){ show(0); }
-  if(e.key==='End'){ show(slides.length-1); }
-});
-/* o slide tem tamanho fixo de 1280x720 e e escalado para caber na tela */
-function fit(){
-  var s = Math.min(window.innerWidth/1280, window.innerHeight/720);
-  document.getElementById('stage').style.transform = 'translate(-50%,-50%) scale('+s+')';
-}
-window.addEventListener('resize', fit);
-fit(); show(0);
-</script>
+  <script>
+    var slides = document.querySelectorAll('.slide');
+    var i = 0;
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach(function (s, k) { s.classList.toggle('on', k === i); });
+      document.getElementById('count').textContent = (i + 1) + ' / ' + slides.length;
+      document.getElementById('prev').disabled = i === 0;
+      document.getElementById('next').disabled = i === slides.length - 1;
+      document.getElementById('prog').style.width = ((i + 1) / slides.length * 100) + '%';
+    }
+    document.getElementById('prev').onclick = function () { show(i - 1); };
+    document.getElementById('next').onclick = function () { show(i + 1); };
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); show(i + 1); }
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(i - 1); }
+      if (e.key === 'Home') { show(0); }
+      if (e.key === 'End') { show(slides.length - 1); }
+    });
+    /* o slide tem tamanho fixo de 1280x720 e e escalado para caber na tela */
+    function fit() {
+      var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+      document.getElementById('stage').style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+    }
+    window.addEventListener('resize', fit);
+    fit(); show(0);
+  </script>
 </body>
+
 </html>
