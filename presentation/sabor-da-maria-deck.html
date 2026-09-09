@@ -1219,7 +1219,49 @@
       border-color: var(--ink)
     }
 
-    /* ciclo de caixa */
+    /* superficie de customizacao — tres camadas empilhadas */
+.cam{display:flex;flex-direction:column;gap:9px;flex:1;min-height:0}
+.lay{display:grid;grid-template-columns:132px 1fr;gap:14px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;padding:11px 14px;flex:1;min-height:0;align-items:stretch}
+.rail{display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--line-2);
+  padding-right:12px;align-self:stretch;justify-content:center}
+.rail .ic{width:17px;height:17px;color:var(--red);margin-bottom:3px}
+.rail b{font-size:12.8px;font-weight:800;color:var(--ink);letter-spacing:-.2px}
+.rail span{font-size:9.4px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--muted)}
+.bx{display:grid;gap:8px;align-items:stretch}
+.bx4{grid-template-columns:repeat(4,1fr)}
+.bx5{grid-template-columns:repeat(5,1fr)}
+.bxd{grid-template-columns:1fr 1.25fr 22px 1.5fr}
+.card{border:1px solid var(--line);border-radius:9px;padding:7px 9px;background:var(--bg);
+  display:flex;flex-direction:column;gap:3px;justify-content:center}
+.card i{font-style:normal;display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.card i b{font-size:10.2px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--body)}
+.card i em{font-style:normal;font-family:var(--mono);font-size:12px;font-weight:800;
+  color:var(--red);line-height:1}
+.card small{font-size:10.4px;color:var(--muted);line-height:1.32}
+.card.hot{background:var(--red-tint);border-color:var(--red-soft)}
+.card.hot i b,.card.hot small{color:var(--red-deep)}
+.card.hot i em{color:var(--red)}
+.card.cli{background:var(--slate-soft);border-color:var(--slate-line)}
+.card.cli i b,.card.cli small{color:var(--slate)}
+.card.cli i em{color:var(--slate)}
+.card.vw{background:#fff;border-color:var(--green-line)}
+.card.vw i em{color:var(--green-ink)}
+.vws{display:flex;flex-wrap:wrap;gap:3px;margin-top:1px}
+.vws span{font-family:var(--mono);font-size:9.4px;font-weight:700;color:var(--green-ink);
+  background:var(--green-soft);border-radius:4px;padding:2px 5px}
+.seta{display:flex;align-items:center;justify-content:center;color:var(--faint)}
+.seta .ic{width:20px;height:20px}
+.gate{display:flex;align-items:center;gap:9px;border:1px solid var(--red-soft);
+  border-radius:10px;background:var(--red-tint);padding:7px 13px;flex-shrink:0}
+.gate .ic{width:16px;height:16px;color:var(--red);flex-shrink:0}
+.gate b{font-size:11.4px;font-weight:800;color:var(--red-deep)}
+.gate span{font-size:10.8px;color:var(--red-deep);line-height:1.3}
+.gate code{font-family:var(--mono);font-size:10.2px;font-weight:700}
+
+/* ciclo de caixa */
     .ciclo {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -2240,7 +2282,87 @@
       </div>
     </section>
 
-    <!-- 8 · o ciclo de caixa -------------------------------------------------- -->
+    <!-- 8 · a customizacao ---------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A customização</div>
+          <h2>Um agente de fábrica não sabe nada disso. <b>Tudo aqui foi definido.</b></h2>
+          <div class="lede">O que sobe pronto numa instalação limpa, sem ninguém responder nada.</div>
+        </div>
+        <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O que é nosso</div></div>
+      </div>
+      <div class="body">
+        <div class="cam">
+
+          <div class="lay">
+            <div class="rail">
+              <svg class="ic"><use href="#i-brain"/></svg>
+              <b>Agente</b><span>persona + 7 skills</span>
+            </div>
+            <div class="bx bx4">
+              <div class="card hot"><i><b>elicitação</b><em>2</em></i>
+                <small>Descobre a cozinha dela: utensílios, técnicas, limites</small></div>
+              <div class="card"><i><b>receita</b><em>2</em></i>
+                <small>Conduz a conversa e busca prato real, com fonte</small></div>
+              <div class="card"><i><b>dinheiro</b><em>2</em></i>
+                <small>Custo por porção e margem, sem jargão de chef</small></div>
+              <div class="card"><i><b>venda</b><em>1</em></i>
+                <small>Põe no ar, acompanha pedido, reinveste</small></div>
+            </div>
+          </div>
+
+          <div class="lay">
+            <div class="rail">
+              <svg class="ic"><use href="#i-plug"/></svg>
+              <b>MCP</b><span>18 ferramentas</span>
+            </div>
+            <div class="bx bx5">
+              <div class="card"><i><b>despensa</b><em>5</em></i>
+                <small>O que tem, quanto custa, quanto sobra</small></div>
+              <div class="card hot"><i><b>perfil</b><em>2</em></i>
+                <small>Grava e relê a cozinha antes de sugerir</small></div>
+              <div class="card"><i><b>cardápio</b><em>5</em></i>
+                <small>Propor, checar, aceitar ou recusar</small></div>
+              <div class="card"><i><b>venda</b><em>3</em></i>
+                <small>Publicar, tirar do ar, ver pedidos</small></div>
+              <div class="card cli"><i><b>cliente</b><em>3</em></i>
+                <small>Vitrine isolada: vê preço, não vê custo</small></div>
+            </div>
+          </div>
+
+          <div class="gate"><svg class="ic"><use href="#i-shield"/></svg>
+            <b>Entre as duas camadas, o gate.</b>
+            <span>Roda fora do modelo antes de aceitar um prato: não vê, não desliga,
+              não convence. Falhou, bloqueia.</span></div>
+
+          <div class="lay">
+            <div class="rail">
+              <svg class="ic"><use href="#i-db"/></svg>
+              <b>Postgres</b><span>9 tabelas · 4 views</span>
+            </div>
+            <div class="bx bxd">
+              <div class="card"><i><b>planilha</b><em>3</em></i>
+                <small>Despensa, preços e saldo — normalizados na carga</small></div>
+              <div class="card"><i><b>conversa</b><em>6</em></i>
+                <small>Perfil, pratos, compras, cardápio e pedidos — só fatos, nada apagado</small></div>
+              <div class="seta"><svg class="ic"><use href="#i-right"/></svg></div>
+              <div class="card vw"><i><b>views</b><em>4</em></i>
+                <small>Estoque, orçamento, cardápio no ar e caixa: contas, não anotações</small>
+                <div class="vws"><span>vw_estoque</span><span>vw_orcamento</span>
+                  <span>vw_cardapio</span><span>vw_caixa</span></div></div>
+            </div>
+          </div>
+
+        </div>
+        <div class="band"><svg class="ic"><use href="#i-info"/></svg>
+          <span><b>Por que view e não coluna atualizada:</b> estoque e saldo são calculados
+          a partir dos fatos, nunca descontados à mão. Se ela desiste de um prato, o ingrediente
+          e o dinheiro voltam sozinhos.</span></div>
+      </div>
+    </section>
+
+    <!-- 9 · o ciclo de caixa -------------------------------------------------- -->
     <section class="slide">
       <div class="sh">
         <div>
@@ -2331,7 +2453,7 @@
       </div>
     </section>
 
-    <!-- 9 · a demonstração ---------------------------------------------------- -->
+    <!-- 10 · a demonstração ---------------------------------------------------- -->
     <section class="slide">
       <div class="sh">
         <div>
@@ -2411,7 +2533,7 @@
       </div>
     </section>
 
-    <!-- 10 · fecho ------------------------------------------------------------- -->
+    <!-- 11 · fecho ------------------------------------------------------------- -->
     <section class="slide close">
       <div class="inner">
         <div class="kick" style="color:#9E9297">Obrigado</div>
@@ -2446,7 +2568,7 @@
     <button id="prev" aria-label="Anterior"><svg class="ic">
         <use href="#i-left" />
       </svg></button>
-    <span class="count" id="count">1 / 10</span>
+    <span class="count" id="count">1 / 11</span>
     <button id="next" aria-label="Próximo"><svg class="ic">
         <use href="#i-right" />
       </svg></button>
