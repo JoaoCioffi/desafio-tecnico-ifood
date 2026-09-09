@@ -27,27 +27,27 @@ carrega a planilha no Postgres e segura o terminal num painel. `Ctrl+C` derruba 
 
 ### Variáveis do `.env`
 
-| variável | para quê |
-|---|---|
-| `LLM_PROVIDER_API_KEY` | chave do provedor do modelo |
-| `TELEGRAM_BOT_TOKEN` | bot da Dona Maria |
-| `TELEGRAM_BOT_TOKEN_CLIENTE` | bot do cliente — precisa ser **outro** bot |
-| `TELEGRAM_ALLOWED_USERS` | ids autorizados; vazio bloqueia todo mundo |
-| `DB_USER` `DB_PASSWORD` `DB_HOST` `DB_PORT` `DB_NAME` | Postgres |
-| `HERMES_DASHBOARD_BASIC_AUTH_*` | dashboard do Hermes |
+| variável                                                       | para quê                                        |
+| --------------------------------------------------------------- | ------------------------------------------------ |
+| `LLM_PROVIDER_API_KEY`                                        | chave do provedor do modelo                      |
+| `TELEGRAM_BOT_TOKEN`                                          | bot da Dona Maria                                |
+| `TELEGRAM_BOT_TOKEN_CLIENTE`                                  | bot do cliente — precisa ser**outro** bot |
+| `TELEGRAM_ALLOWED_USERS`                                      | ids autorizados; vazio bloqueia todo mundo       |
+| `DB_USER` `DB_PASSWORD` `DB_HOST` `DB_PORT` `DB_NAME` | Postgres                                         |
+| `HERMES_DASHBOARD_BASIC_AUTH_*`                               | dashboard do Hermes                              |
 
 ### Comandos
 
-| comando | o que faz |
-|---|---|
-| `python .docker/runner.py` | sobe tudo e segura o terminal no painel |
-| `python .docker/runner.py --setup` | wizard do Hermes, partindo da config versionada |
-| `python .docker/runner.py --down` | derruba os containers, preserva o resto |
-| `python .docker/runner.py --reset` | destrói o volume do banco |
-| `python .docker/runner.py --delete` | destrói tudo, inclusive os dados dos agentes |
-| `python .docker/painel-mcp.py` | dashboard do servidor MCP (aba separada) |
-| `python .docker/provar.py` | provas de esquema e integração em banco descartável |
-| `pytest` | 79 testes do domínio, sem Docker |
+| comando                               | o que faz                                              |
+| ------------------------------------- | ------------------------------------------------------ |
+| `python .docker/runner.py`          | sobe tudo e segura o terminal no painel                |
+| `python .docker/runner.py --setup`  | wizard do Hermes, partindo da config versionada        |
+| `python .docker/runner.py --down`   | derruba os containers, preserva o resto                |
+| `python .docker/runner.py --reset`  | destrói o volume do banco                             |
+| `python .docker/runner.py --delete` | destrói tudo, inclusive os dados dos agentes          |
+| `python .docker/painel-mcp.py`      | dashboard do servidor MCP (aba separada)               |
+| `python .docker/provar.py`          | provas de esquema e integração em banco descartável |
+| `pytest`                            | 79 testes do domínio, sem Docker                      |
 
 ### Dependências
 
@@ -60,59 +60,65 @@ só o runner precisa delas.
 
 ## 2. Estrutura do projeto
 
-```
-.docker/
-  runner.py                    orquestra a stack, painel ao vivo, ETL da planilha
-  painel-mcp.py                dashboard do MCP: chamadas, latência, decisões do gate
-  provar.py                    sobe Postgres descartável e roda as provas
-  docker-compose.yaml          4 serviços; portas só em loopback
-  mcp.Dockerfile               imagem do servidor MCP
-  db.sql                       9 tabelas, 4 views, comentários no próprio banco
-  db.prova.sql                 8 provas de esquema, em psql puro
-  db.integra.py                24 verificações do repo, com concorrência
-
-  hermes-profile/              PERFIL DA DONA MARIA — versionado
-    config.base.yaml             saída literal do wizard (dispensa refazê-lo)
-    config.yaml                  o delta aplicado sobre ela
-    SOUL.md                      o papel e a persona do agente
-    agent-hooks/
-      gate-viabilidade.py        o hook que bloqueia o aceite
-    skills/sabor-da-maria/       7 procedimentos
-  hermes-profile-cliente/      PERFIL DO CLIENTE — mesma estrutura, menos tudo
-  hermes-data*/                HERMES_HOME de cada agente — fora do git
-
-src/backend/
-  domain/                      Python puro, sem I/O — 56 exemplos de doctest
-    unidades.py                  normalização, conversão e consolidação
-    precificacao.py              CMV, taxa, preço mínimo, cenários
-    viabilidade.py               o gate como função pura
-  mcp_server/
-    server.py                    as 18 ferramentas + 3 rotas HTTP
-    repo.py                      única camada que fala SQL
-    observador.py                telemetria do servidor
-    __main__.py                  entrypoint
-  tests/                       79 testes com os valores reais da planilha
-
-presentation/
-  sabor-da-maria-deck.html     slide-deck da apresentação
-  scenarios/scenario.md        roteiro da demo, passo a passo
-
-shared/                        enunciado e planilha, como recebidos
+```text
+.
+├───.docker/                            # infra, perfis dos agentes e ferramentas de operação
+│   ├───runner.py                       # sobe a stack, painel ao vivo e ETL da planilha
+│   ├───painel-mcp.py                   # dashboard do MCP: chamadas, latência e o gate
+│   ├───provar.py                       # sobe Postgres descartável e roda as provas
+│   ├───docker-compose.yaml             # 4 serviços; portas publicadas só em loopback
+│   ├───mcp.Dockerfile                  # imagem do servidor MCP
+│   ├───db.sql                          # 9 tabelas, 4 views, COMMENT em cada uma
+│   ├───db.prova.sql                    # 8 provas de esquema, em psql puro
+│   ├───db.integra.py                   # 24 verificações do repo, com concorrência
+│   ├───hermes-profile/                 # PERFIL DA DONA MARIA — versionado
+│   │   ├───config.base.yaml            # saída literal do wizard; dispensa refazê-lo
+│   │   ├───config.yaml                 # o delta: modelo, toolsets, MCP e hooks
+│   │   ├───SOUL.md                     # o papel e a persona do agente
+│   │   ├───agent-hooks/
+│   │   │   └───gate-viabilidade.py     # o hook que bloqueia o aceite
+│   │   └───skills/
+│   │       ├───sabor-da-maria/         # 7 procedimentos, um por diretório
+│   │       ├───grounded-citations/     # preservada do Hermes
+│   │       └───blocked-page-recovery/  # preservada do Hermes
+│   ├───hermes-profile-cliente/         # PERFIL DO CLIENTE — mesma estrutura, menos tudo
+│   │   ├───config.yaml                 # 4 toolsets, 3 ferramentas
+│   │   └───SOUL.md                     # persona de balcão, não de assistente
+│   └───hermes-data*/                   # HERMES_HOME de cada agente — fora do git
+├───src/backend/
+│   ├───domain/                         # Python puro, sem I/O — 56 exemplos de doctest
+│   │   ├───unidades.py                 # normalização, conversão e consolidação
+│   │   ├───precificacao.py             # CMV, taxa, preço mínimo e cenários
+│   │   └───viabilidade.py              # o gate como função pura
+│   ├───mcp_server/
+│   │   ├───server.py                   # as 18 ferramentas + 3 rotas HTTP
+│   │   ├───repo.py                     # única camada que fala SQL
+│   │   ├───observador.py               # telemetria do servidor, em anel de memória
+│   │   └───__main__.py                 # entrypoint: abre o pool e sobe o HTTP
+│   └───tests/                          # 79 testes com os valores reais da planilha
+├───presentation/
+│   ├───sabor-da-maria-deck.html        # slide-deck da apresentação, 10 slides
+│   └───scenarios/
+│       └───scenario.md                 # roteiro da demo, passo a passo
+├───shared/                             # enunciado e planilha, como recebidos
+├───.env.example                        # todas as variáveis, comentadas
+├───pyproject.toml                      # config do pytest e dos doctests
+└───requirements.txt                    # dependências do runner (host)
 ```
 
 ### Onde fica cada coisa
 
-| pergunta | resposta |
-|---|---|
-| Onde o servidor MCP é definido? | `src/backend/mcp_server/server.py` |
-| Onde as ferramentas são declaradas? | mesmo arquivo, decorador `@mcp.tool` |
-| Quais ferramentas cada agente enxerga? | `mcp_servers.sabor.tools.include` no `config.yaml` de cada perfil |
-| Onde o papel do agente é definido? | `hermes-profile*/SOUL.md` |
-| Onde ficam os procedimentos? | `hermes-profile/skills/sabor-da-maria/*/SKILL.md` |
-| Onde está o ETL da planilha? | `runner.py`, função `carregar()` |
-| Onde a garantia do aceite é aplicada? | `config.yaml` → `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` |
-| Onde o SQL vive? | `src/backend/mcp_server/repo.py` e `.docker/db.sql` |
-| Onde as regras de negócio são calculadas? | `src/backend/domain/` (puro) e views do `db.sql` |
+| pergunta                                    | resposta                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| Onde o servidor MCP é definido?            | `src/backend/mcp_server/server.py`                                              |
+| Onde as ferramentas são declaradas?        | mesmo arquivo, decorador`@mcp.tool`                                             |
+| Quais ferramentas cada agente enxerga?      | `mcp_servers.sabor.tools.include` no `config.yaml` de cada perfil             |
+| Onde o papel do agente é definido?         | `hermes-profile*/SOUL.md`                                                       |
+| Onde ficam os procedimentos?                | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                               |
+| Onde está o ETL da planilha?               | `runner.py`, função `carregar()`                                            |
+| Onde a garantia do aceite é aplicada?      | `config.yaml` → `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` |
+| Onde o SQL vive?                            | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                           |
+| Onde as regras de negócio são calculadas? | `src/backend/domain/` (puro) e views do `db.sql`                              |
 
 ---
 
@@ -152,17 +158,17 @@ dois agentes num servidor só.
 
 ### Banco — tabelas
 
-| tabela | o que guarda |
-|---|---|
-| `despensa` | projeção da aba *Despensa*, com unidade normalizada |
-| `precos` | projeção da aba *Precos*, com `custo_unitario` derivado |
-| `orcamento` | linha única: os R$ 80 iniciais |
-| `perfil` | o que a Dona Maria confirmou: utensílios, técnicas, restrições |
-| `pratos` | candidatos, com status `sugerido` / `aceito` / `recusado` |
-| `pratos_ingredientes` | o que cada prato consome — o **ledger** |
-| `compras` | complementos comprados com o orçamento |
-| `cardapio` | publicações; `retirado_em` nulo = no ar |
-| `pedidos` | as compras do cliente — única entrada de dinheiro |
+| tabela                  | o que guarda                                                       |
+| ----------------------- | ------------------------------------------------------------------ |
+| `despensa`            | projeção da aba*Despensa*, com unidade normalizada             |
+| `precos`              | projeção da aba*Precos*, com `custo_unitario` derivado       |
+| `orcamento`           | linha única: os R$ 80 iniciais                                    |
+| `perfil`              | o que a Dona Maria confirmou: utensílios, técnicas, restrições |
+| `pratos`              | candidatos, com status`sugerido` / `aceito` / `recusado`     |
+| `pratos_ingredientes` | o que cada prato consome — o**ledger**                      |
+| `compras`             | complementos comprados com o orçamento                            |
+| `cardapio`            | publicações;`retirado_em` nulo = no ar                         |
+| `pedidos`             | as compras do cliente — única entrada de dinheiro                |
 
 **`precos` guarda os dois custos.** `custo_unitario` é `GENERATED` e divide pela
 quantidade **normalizada**; `custo_unitario_ingenuo` divide pela quantidade crua. Em 6
@@ -176,12 +182,12 @@ não reescreve o passado. `taxa` e `valor_liquido` são `GENERATED` — o banco 
 
 ### Banco — views, e por que views
 
-| view | o que responde |
-|---|---|
-| `vw_estoque` | despensa + compras − consumo dos pratos aceitos × lotes publicados |
-| `vw_orcamento` | R$ 80 − soma das compras |
-| `vw_cardapio` | o que está no ar, com porções vendidas e restantes |
-| `vw_caixa` | orçamento − compras + vendas líquidas |
+| view             | o que responde                                                       |
+| ---------------- | -------------------------------------------------------------------- |
+| `vw_estoque`   | despensa + compras − consumo dos pratos aceitos × lotes publicados |
+| `vw_orcamento` | R$ 80 − soma das compras                                            |
+| `vw_cardapio`  | o que está no ar, com porções vendidas e restantes                |
+| `vw_caixa`     | orçamento − compras + vendas líquidas                             |
 
 **Estoque e orçamento não são colunas decrementadas em lugar nenhum.** São calculados
 a partir dos fatos: pratos aceitos, compras e pedidos.
@@ -196,53 +202,53 @@ Uma view não dessincroniza: ela **é** a conta.
 
 Da Dona Maria (15):
 
-| ferramenta | o que faz |
-|---|---|
-| `consultar_despensa` | lê `vw_estoque`: total, comprometido e disponível |
-| `consultar_orcamento` | R$ 80 menos as compras |
-| `calcular_cmv` | soma `quantidade × custo_unitario`, divide por porções, arredonda uma vez |
-| `cenarios_preco` | 2–3 cenários de margem, com a conta aberta |
-| `registrar_perfil` | grava utensílios, técnicas e restrições |
-| `consultar_perfil` | o que já se sabe, para não repetir pergunta |
-| `propor_prato` | registra candidato + requisitos, já devolve a viabilidade |
-| `checar_prato` | o que falta perguntar, com a pergunta pronta |
-| `aceitar_prato` | fecha o prato. **Recusa** com pendência aberta |
-| `recusar_prato` | devolve estoque e dinheiro, desfaz compras do prato |
-| `consultar_cardapio` | os pratos por status |
-| `registrar_compra` | complemento comprado além da receita |
-| `publicar_prato` | põe à venda. **Recusa** se a despensa não aguentar os lotes |
-| `despublicar_prato` | tira do ar; pedidos e dinheiro permanecem |
-| `consultar_pedidos` | vendas e caixa, com bruto, taxa e líquido |
+| ferramenta              | o que faz                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `consultar_despensa`  | lê`vw_estoque`: total, comprometido e disponível                          |
+| `consultar_orcamento` | R$ 80 menos as compras                                                        |
+| `calcular_cmv`        | soma`quantidade × custo_unitario`, divide por porções, arredonda uma vez |
+| `cenarios_preco`      | 2–3 cenários de margem, com a conta aberta                                  |
+| `registrar_perfil`    | grava utensílios, técnicas e restrições                                   |
+| `consultar_perfil`    | o que já se sabe, para não repetir pergunta                                 |
+| `propor_prato`        | registra candidato + requisitos, já devolve a viabilidade                    |
+| `checar_prato`        | o que falta perguntar, com a pergunta pronta                                  |
+| `aceitar_prato`       | fecha o prato.**Recusa** com pendência aberta                          |
+| `recusar_prato`       | devolve estoque e dinheiro, desfaz compras do prato                           |
+| `consultar_cardapio`  | os pratos por status                                                          |
+| `registrar_compra`    | complemento comprado além da receita                                         |
+| `publicar_prato`      | põe à venda.**Recusa** se a despensa não aguentar os lotes           |
+| `despublicar_prato`   | tira do ar; pedidos e dinheiro permanecem                                     |
+| `consultar_pedidos`   | vendas e caixa, com bruto, taxa e líquido                                    |
 
 Do cliente (3):
 
-| ferramenta | o que faz |
-|---|---|
-| `consultar_cardapio_publico` | só o que está no ar, com porções restantes |
-| `fazer_pedido` | compra. **Não aceita preço** — ele sai do cardápio |
-| `consultar_pedido` | detalhe de um pedido |
+| ferramenta                     | o que faz                                                   |
+| ------------------------------ | ----------------------------------------------------------- |
+| `consultar_cardapio_publico` | só o que está no ar, com porções restantes              |
+| `fazer_pedido`               | compra.**Não aceita preço** — ele sai do cardápio |
+| `consultar_pedido`           | detalhe de um pedido                                        |
 
 Rotas HTTP fora do protocolo MCP:
 
-| rota | para quê |
-|---|---|
-| `GET /saude` | healthcheck do compose |
-| `GET /gate/{prato_id}` | o hook consulta daqui |
-| `GET /eventos` | telemetria que o `painel-mcp.py` lê |
+| rota                     | para quê                             |
+| ------------------------ | ------------------------------------- |
+| `GET /saude`           | healthcheck do compose                |
+| `GET /gate/{prato_id}` | o hook consulta daqui                 |
+| `GET /eventos`         | telemetria que o`painel-mcp.py` lê |
 
 ### Skills
 
 Progressive disclosure: o corpo só entra no contexto quando o agente decide usar.
 
-| skill | quando |
-|---|---|
+| skill                      | quando                                                  |
+| -------------------------- | ------------------------------------------------------- |
 | `orquestrar-atendimento` | a ordem do atendimento, do primeiro oi ao prato fechado |
-| `pesquisar-receitas` | procurar prato novo aproveitando a despensa |
-| `elicitar-restricoes` | descobrir utensílios, técnicas e limites |
-| `avaliar-viabilidade` | virar cada pendência do gate em pergunta |
-| `explicar-cmv` | falar de dinheiro sem o jargão do ramo |
-| `precificar-prato` | CMV por porção e cenários de margem |
-| `publicar-cardapio` | pôr à venda, acompanhar pedidos, reinvestir o caixa |
+| `pesquisar-receitas`     | procurar prato novo aproveitando a despensa             |
+| `elicitar-restricoes`    | descobrir utensílios, técnicas e limites              |
+| `avaliar-viabilidade`    | virar cada pendência do gate em pergunta               |
+| `explicar-cmv`           | falar de dinheiro sem o jargão do ramo                 |
+| `precificar-prato`       | CMV por porção e cenários de margem                  |
+| `publicar-cardapio`      | pôr à venda, acompanhar pedidos, reinvestir o caixa   |
 
 Preservadas do Hermes: `grounded-citations` e `blocked-page-recovery`.
 
@@ -252,18 +258,18 @@ Versionada em duas peças: `config.base.yaml` é a saída literal do wizard, e
 `config.yaml` é o **delta** que o runner funde sobre ela. Isso é o que dispensa o wizard
 num clone limpo — e o que torna `--delete` seguro.
 
-| chave | valor | por quê |
-|---|---|---|
-| `model.provider` | `openai-api` | o Hermes **não** conhece o provider `openai` |
-| `web.backend` | `exa`, tier `free` | faz busca **e** extração de conteúdo na mesma chamada; `ddgs` é search-only |
-| `platform_toolsets` | 12 toolsets (Maria), 4 (cliente) | cada ferramenta habilitada é schema no prompt de toda rodada |
-| `mcp_servers.sabor.tools.include` | lista explícita | ferramenta nova não entra sozinha no prompt |
-| `hooks_auto_accept` | `true` | sem isso o hook **não se registra** num gateway sem terminal |
-| `hooks.pre_tool_call.matcher` | `.*aceitar_prato` | o matcher usa `fullmatch`, e o nome real é `mcp__sabor__aceitar_prato` |
-| `hooks.pre_tool_call.fail_closed` | `true` | script que falha **bloqueia** a ferramenta, não libera |
-| `providers.*.stale_timeout_seconds` | `180` | o default de 60s corta modelo de raciocínio no meio |
-| `database.journal_mode` | `wal` | cala o aviso a cada boot |
-| `.no-bundled-skills` | marcador | as 58 skills de fábrica não cabem no limite de 60 comandos do Telegram |
+| chave                                 | valor                            | por quê                                                                               |
+| ------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
+| `model.provider`                    | `openai-api`                   | o Hermes**não** conhece o provider `openai`                                   |
+| `web.backend`                       | `exa`, tier `free`           | faz busca**e** extração de conteúdo na mesma chamada; `ddgs` é search-only |
+| `platform_toolsets`                 | 12 toolsets (Maria), 4 (cliente) | cada ferramenta habilitada é schema no prompt de toda rodada                          |
+| `mcp_servers.sabor.tools.include`   | lista explícita                 | ferramenta nova não entra sozinha no prompt                                           |
+| `hooks_auto_accept`                 | `true`                         | sem isso o hook**não se registra** num gateway sem terminal                     |
+| `hooks.pre_tool_call.matcher`       | `.*aceitar_prato`              | o matcher usa`fullmatch`, e o nome real é `mcp__sabor__aceitar_prato`             |
+| `hooks.pre_tool_call.fail_closed`   | `true`                         | script que falha**bloqueia** a ferramenta, não libera                           |
+| `providers.*.stale_timeout_seconds` | `180`                          | o default de 60s corta modelo de raciocínio no meio                                   |
+| `database.journal_mode`             | `wal`                          | cala o aviso a cada boot                                                               |
+| `.no-bundled-skills`                | marcador                         | as 58 skills de fábrica não cabem no limite de 60 comandos do Telegram               |
 
 Toolsets desabilitados: `browser` (a extração vem do `exa`; o install quebra por
 conflito de httpx), `cronjob`, `kanban`, `image_generate`, `text_to_speech`,
@@ -277,7 +283,7 @@ conflito de httpx), `cronjob`, `kanban`, `image_generate`, `text_to_speech`,
 
 Três blocos que redesenham no lugar: **INFRA**, **HERMES**, **HARDWARE**.
 
-```
+```text
   ↗ cpu  ▁▁▁▁▁▁▁▁▁▁▁▁▂▂▂▃▄▆██████▅▃▂▁▁▁    Ryzen 9 5900X • 12c/24t   0.72 %
 ```
 
@@ -292,7 +298,7 @@ todo texto que sai passa por `redigir()`.
 
 Aba separada, só leitura. `Ctrl+C` nela não encosta nos containers.
 
-```
+```text
   FLUXO                                                    mais recente embaixo
    01:31:35.189  maria   • consultar_pedidos              3ms
                           in 0         out {2}     · 559 B
@@ -314,7 +320,7 @@ manda o último `seq` que tem e recebe só o delta.
 
 ## 5. Testes
 
-```bash
+```text
 pytest                      # 79 testes · 0,2s · sem Docker, sem rede, sem chave
 python .docker/provar.py    # 8 provas de esquema + 24 de integração
 ```
@@ -323,11 +329,11 @@ O `provar.py` sobe um Postgres descartável, aplica o `db.sql` num banco vazio, 
 duas provas e apaga o container no fim — inclusive se falhar. Não toca no banco do
 projeto.
 
-| camada | onde roda | o que prova |
-|---|---|---|
-| `pytest` | host, domínio puro | as contas, com os valores reais da planilha |
-| `db.prova.sql` | psql, sem Python | constraints, índices e views — sobre o **banco** |
-| `db.integra.py` | dentro da imagem do MCP | o `repo.py` contra o esquema, com threads concorrentes |
+| camada            | onde roda               | o que prova                                             |
+| ----------------- | ----------------------- | ------------------------------------------------------- |
+| `pytest`        | host, domínio puro     | as contas, com os valores reais da planilha             |
+| `db.prova.sql`  | psql, sem Python        | constraints, índices e views — sobre o**banco** |
+| `db.integra.py` | dentro da imagem do MCP | o`repo.py` contra o esquema, com threads concorrentes |
 
 O `pytest` roda os 56 exemplos de doctest do domínio via `--doctest-modules`: o exemplo
 que documenta a função **é** o teste que a protege.
@@ -345,12 +351,12 @@ prova acusar, com a mensagem certa.
 
 **Do projeto**
 
-| documento | conteúdo |
-|---|---|
-| [`presentation/sabor-da-maria-deck.html`](presentation/sabor-da-maria-deck.html) | slide-deck da apresentação, 10 slides |
-| [`presentation/scenarios/scenario.md`](presentation/scenarios/scenario.md) | roteiro da demo com o que esperar em cada passo |
-| [`shared/desafio-senior-ai-engineer.md`](shared/desafio-senior-ai-engineer.md) | o enunciado, como recebido |
-| `.docker/db.sql` | esquema com `COMMENT` em cada tabela e coluna relevante |
+| documento                                                                         | conteúdo                                                |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`presentation/sabor-da-maria-deck.html`](presentation/sabor-da-maria-deck.html) | slide-deck da apresentação, 10 slides                  |
+| [`presentation/scenarios/scenario.md`](presentation/scenarios/scenario.md)       | roteiro da demo com o que esperar em cada passo          |
+| [`shared/desafio-senior-ai-engineer.md`](shared/desafio-senior-ai-engineer.md)   | o enunciado, como recebido                               |
+| `.docker/db.sql`                                                                | esquema com`COMMENT` em cada tabela e coluna relevante |
 
 O código é comentado em português, explicando **por que** cada decisão foi tomada — as
 docstrings dos módulos de `domain/` e do `runner.py` são o melhor ponto de partida.
