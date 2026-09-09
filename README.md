@@ -76,7 +76,7 @@ só o runner precisa delas.
 │   │   ├───config.yaml                 # modelo, toolsets, servidor MCP e hooks
 │   │   ├───SOUL.md                     # quem o agente é e como conduz a conversa
 │   │   ├───agent-hooks/
-│   │   │   └───gate-viabilidade.py     # a trava do aceite — fora do alcance do modelo
+│   │   │   └───gate-viabilidade.py     # trava do aceite: outro processo decide, não o modelo
 │   │   └───skills/sabor-da-maria/      # 7 procedimentos, um por diretório
 │   └───hermes-profile-cliente/         # PERFIL DO CLIENTE — 3 ferramentas, nada mais
 ├───src/backend/
@@ -99,30 +99,34 @@ só o runner precisa delas.
 
 ### Onde fica cada coisa
 
-| pergunta                                  | resposta                                                                             |
-| ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| Que framework serve o MCP?                | `fastmcp>=4` no transporte `http` — Starlette e uvicorn por baixo, **não** é FastAPI |
-| Em que porta?                             | 8000 dentro do contêiner, publicada em `127.0.0.1:8765`                              |
-| Onde as ferramentas são declaradas?       | `src/backend/mcp_server/server.py`, decorador `@mcp.tool`                            |
-| Quais ferramentas cada agente enxerga?    | `mcp_servers.sabor.tools.include`, no `config.yaml` de cada perfil                   |
-| Onde o papel do agente é definido?        | `hermes-profile*/SOUL.md`                                                            |
-| Onde ficam os procedimentos?              | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                                    |
-| Onde está o ETL da planilha?              | `runner.py`, função `carregar()`                                                     |
-| Onde a garantia do aceite é aplicada?     | `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` (ver abaixo)              |
-| Onde o SQL vive?                          | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                                  |
-| Onde as regras de negócio são calculadas? | `src/backend/domain/`, e as views do `db.sql`                                        |
-
+| pergunta                                    | resposta                                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Que framework serve o MCP?                  | `fastmcp>=4` no transporte `http` — Starlette e uvicorn por baixo, **não** é FastAPI |
+| Em que porta?                               | 8000 dentro do contêiner, publicada em`127.0.0.1:8765`                                         |
+| Onde as ferramentas são declaradas?        | `src/backend/mcp_server/server.py`, decorador `@mcp.tool`                                     |
+| Quais ferramentas cada agente enxerga?      | `mcp_servers.sabor.tools.include`, no `config.yaml` de cada perfil                            |
+| Onde o papel do agente é definido?         | `hermes-profile*/SOUL.md`                                                                       |
+| Onde ficam os procedimentos?                | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                                               |
+| Onde está o ETL da planilha?               | `runner.py`, função `carregar()`                                                            |
+| Onde a garantia do aceite é aplicada?      | `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` (ver abaixo)                       |
+| Onde o SQL vive?                            | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                                           |
+| Onde as regras de negócio são calculadas? | `src/backend/domain/`, e as views do `db.sql`                                                 |
 
 **A trava do aceite.** `aceitar_prato` grava o prato como escolhido, e é a única ferramenta
-que não pode ser chamada na confiança. Antes dela, o Hermes dispara o hook
-`gate-viabilidade.py`: um processo à parte que consulta `GET /gate/{prato_id}` no servidor
-MCP e responde **libera** ou **bloqueia**, com a lista de pendências.
+que não pode ser chamada na confiança. Antes de despachá-la, o Hermes executa
+`gate-viabilidade.py` como processo separado: manda a chamada em JSON pelo stdin, lê a
+decisão do stdout. O script consulta `GET /gate/{prato_id}` no servidor MCP e responde
+**libera** ou **bloqueia**, com a lista de pendências.
 
 Quem decide é `domain/viabilidade.py`, comparando o prato com a despensa, os utensílios, a
-técnica e o orçamento — dados do banco, não do que foi dito na conversa. O modelo não
-escolhe se o hook roda, não enxerga o código dele e não tem como argumentar — e se o script
-cair ou estourar os 15s, `fail_closed: true` bloqueia por padrão. As pendências voltam para o agente virarem pergunta à Dona
-Maria — nunca para serem contornadas.
+técnica e o orçamento — dados do banco, não do que foi dito na conversa. O script não é uma
+ferramenta do toolset: o modelo não pode chamá-lo nem deixar de chamá-lo, o código nunca
+entra no contexto dele, e quem decide executar é o Hermes. Se o hook cair ou estourar os
+15s, `fail_closed: true` bloqueia por padrão.
+
+A mesma regra escrita no `SOUL.md` seria uma frase no prompt: obedecida quase sempre, e
+ignorada justamente quando alguém insistisse. Aqui ela é um `exit 2`. As pendências voltam
+para o agente virarem pergunta à Dona Maria — nunca para serem contornadas.
 
 ---
 
