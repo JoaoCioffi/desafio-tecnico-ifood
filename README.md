@@ -76,21 +76,18 @@ só o runner precisa delas.
 │   │   ├───config.yaml                 # modelo, toolsets, servidor MCP e hooks
 │   │   ├───SOUL.md                     # quem o agente é e como conduz a conversa
 │   │   ├───agent-hooks/
-│   │   │   └───gate-viabilidade.py     # roda antes do aceite; pode bloquear
+│   │   │   └───gate-viabilidade.py     # a trava do aceite — fora do alcance do modelo
 │   │   └───skills/sabor-da-maria/      # 7 procedimentos, um por diretório
-│   ├───hermes-profile-cliente/         # PERFIL DO CLIENTE — 3 ferramentas, nada mais
-│   └───hermes-data*/                   # HERMES_HOME de cada agente — fora do git
+│   └───hermes-profile-cliente/         # PERFIL DO CLIENTE — 3 ferramentas, nada mais
 ├───src/backend/
 │   ├───domain/                         # as regras de negócio, em Python puro e sem I/O
 │   │   ├───unidades.py                 # normaliza a planilha: pacote vs. medida
 │   │   ├───precificacao.py             # CMV, taxa do app, preço mínimo e margem
-│   │   └───viabilidade.py              # as regras que o gate aplica antes do aceite
-│   ├───mcp_server/
-│   │   ├───server.py                   # as 18 ferramentas, em FastMCP sobre HTTP
-│   │   ├───repo.py                     # única camada que fala SQL (psycopg)
-│   │   ├───observador.py               # telemetria do servidor, em anel de memória
-│   │   └───__main__.py                 # entrypoint: abre o pool e sobe o HTTP
-│   └───tests/                          # 79 testes com os valores reais da planilha
+│   │   └───viabilidade.py              # decide se o prato cabe na despensa e no perfil
+│   └───mcp_server/
+│       ├───server.py                   # as 18 ferramentas, em FastMCP sobre HTTP
+│       ├───repo.py                     # única camada que fala SQL (psycopg)
+│       └───observador.py               # telemetria do servidor, em anel de memória
 ├───presentation/
 │   ├───sabor-da-maria-deck.html        # slide-deck da apresentação, 11 slides
 │   └───scenarios/scenario.md           # roteiro da demo, passo a passo
@@ -111,9 +108,21 @@ só o runner precisa delas.
 | Onde o papel do agente é definido?        | `hermes-profile*/SOUL.md`                                                            |
 | Onde ficam os procedimentos?              | `hermes-profile/skills/sabor-da-maria/*/SKILL.md`                                    |
 | Onde está o ETL da planilha?              | `runner.py`, função `carregar()`                                                     |
-| Onde a garantia do aceite é aplicada?     | `config.yaml` → `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py`            |
+| Onde a garantia do aceite é aplicada?     | `hooks.pre_tool_call` → `agent-hooks/gate-viabilidade.py` (ver abaixo)              |
 | Onde o SQL vive?                          | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                                  |
 | Onde as regras de negócio são calculadas? | `src/backend/domain/`, e as views do `db.sql`                                        |
+
+
+**A trava do aceite.** `aceitar_prato` grava o prato como escolhido, e é a única ferramenta
+que não pode ser chamada na confiança. Antes dela, o Hermes dispara o hook
+`gate-viabilidade.py`: um processo à parte que consulta `GET /gate/{prato_id}` no servidor
+MCP e responde **libera** ou **bloqueia**, com a lista de pendências.
+
+Quem decide é `domain/viabilidade.py`, comparando o prato com a despensa, os utensílios, a
+técnica e o orçamento — dados do banco, não do que foi dito na conversa. O modelo não
+escolhe se o hook roda, não enxerga o código dele e não tem como argumentar — e se o script
+cair ou estourar os 15s, `fail_closed: true` bloqueia por padrão. As pendências voltam para o agente virarem pergunta à Dona
+Maria — nunca para serem contornadas.
 
 ---
 
