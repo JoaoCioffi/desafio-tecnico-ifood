@@ -221,13 +221,15 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 .cx.fim .ci{background:#fff;color:var(--green-ink)}
 .cx.fim .cv{color:var(--green-ink)}
 .guards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1;min-height:0;margin-top:14px}
-.guard{border:1px solid var(--line);border-radius:11px;padding:15px 16px;background:var(--bg);
-  display:flex;flex-direction:column;gap:9px}
+/* Mesma regra do cartao da armadilha: a sobra e repartida entre os tres
+   blocos. Com o numero preso no rodape, tudo virava um vao unico no meio. */
+.guard{border:1px solid var(--line);border-radius:11px;padding:17px 18px;background:var(--bg);
+  display:flex;flex-direction:column;gap:11px;justify-content:space-between}
 .guard .gh{display:flex;align-items:center;gap:9px}
-.guard .gh .ic{color:var(--red);width:18px;height:18px}
-.guard .gh b{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.25px;line-height:1.14}
-.guard p{font-size:11.6px;color:var(--body);line-height:1.42}
-.guard .gv{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--red);margin-top:auto}
+.guard .gh .ic{color:var(--red);width:19px;height:19px}
+.guard .gh b{font-size:13.4px;font-weight:800;color:var(--ink);letter-spacing:-.25px;line-height:1.14}
+.guard p{font-size:12.2px;color:var(--body);line-height:1.46}
+.guard .gv{font-family:var(--mono);font-size:12.2px;font-weight:700;color:var(--red)}
 
 /* demonstracao */
 .lanes{display:flex;flex-direction:column;gap:11px;flex:1;min-height:0}
@@ -543,26 +545,26 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
         <div class="zl">docker compose · rede interna · sobe com um comando</div>
         <div class="tier t2">
           <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>A consultora</b><small>conversa com a Dona Maria e conduz a decisão</small></div>
+            <div><b>Hermes · consultora</b><small>conversa com a Dona Maria e conduz a decisão</small></div>
             <span class="tag pill ai">Agente</span></div>
           <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>O balcão</b><small>atende quem faz o pedido</small></div>
+            <div><b>Hermes · balcão</b><small>atende quem faz o pedido</small></div>
             <span class="tag pill ai">Agente</span></div>
         </div>
         <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg> protocolo aberto de ferramentas</div>
         <div class="tier t3">
           <div class="node gate"><svg class="ic"><use href="#i-shield"/></svg>
-            <div><b>As garantias</b><small>rodam antes, e o modelo não as alcança</small></div></div>
+            <div><b>Gate de viabilidade</b><small>roda antes, e o modelo não o alcança</small></div></div>
           <div class="node" style="grid-column:2 / 4"><svg class="ic"><use href="#i-server"/></svg>
-            <div><b>A régua do negócio</b><small>custo, preço, estoque e orçamento</small></div>
+            <div><b>Servidor MCP</b><small>custo, preço, estoque e orçamento</small></div>
             <span class="tag pill det">Determinístico</span></div>
         </div>
         <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg></div>
         <div class="tier t2">
           <div class="node data"><svg class="ic"><use href="#i-db"/></svg>
-            <div><b>O estado</b><small>onde os dois agentes se encontram</small></div></div>
+            <div><b>PostgreSQL</b><small>onde os dois agentes se encontram</small></div></div>
           <div class="node"><svg class="ic"><use href="#i-term"/></svg>
-            <div><b>Os painéis</b><small>carga da planilha e observabilidade ao vivo</small></div></div>
+            <div><b>Painéis ao vivo</b><small>carga da planilha e observabilidade</small></div></div>
         </div>
       </div>
       <div class="leg">
