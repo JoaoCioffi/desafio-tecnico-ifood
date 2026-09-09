@@ -804,10 +804,11 @@ def publicar_prato(prato_id: int, preco: float, lotes: int = 1) -> dict:
 
     `lotes` e quantas vezes ela vai COZINHAR a receita, nao quantas porcoes ela
     quer vender. Uma receita que rende 4 porcoes, publicada com 3 lotes, oferece
-    12 porcoes — e compromete tres vezes o ingrediente na despensa. Pergunte
-    quantas ela consegue fazer antes de escolher esse numero; publicar mais do
-    que a despensa aguenta deixa o estoque negativo e ela descobre na hora de
-    cozinhar.
+    12 porcoes — e compromete tres vezes o ingrediente na despensa.
+
+    A chamada RECUSA se a despensa nao aguentar os lotes pedidos, e a recusa vem
+    com `lotes_possiveis` e o ingrediente que limita. Nao tente contornar
+    republicando: ofereca o numero que cabe, ou proponha comprar o que falta.
 
     Republicar o mesmo prato ATUALIZA preco e lotes. Nao cria uma segunda
     oferta, e os pedidos ja feitos continuam valendo o preco que tinham.
@@ -822,10 +823,26 @@ def publicar_prato(prato_id: int, preco: float, lotes: int = 1) -> dict:
 
     linha = repo.cardapio_publicar(prato_id, preco, lotes)
     if linha is None:
+        # A recusa ja aconteceu no banco. Aqui so se descobre QUAL das duas foi,
+        # para a resposta dizer algo acionavel em vez de "nao deu".
         prato = repo.prato_carregar(prato_id)
-        motivo = (f"prato {prato_id} nao existe" if prato is None
-                  else f"o prato esta '{prato['status']}' — so prato aceito vai ao ar")
-        return {"publicado": False, "motivo": motivo}
+        if prato is None:
+            return {"publicado": False, "motivo": f"prato {prato_id} nao existe"}
+        if prato["status"] != "aceito":
+            return {"publicado": False,
+                    "motivo": f"o prato esta '{prato['status']}' — so prato aceito vai ao ar"}
+
+        cabe = repo.lotes_possiveis(prato_id) or {}
+        possiveis = cabe.get("lotes") or 0
+        return {
+            "publicado": False,
+            "motivo": f"a despensa nao aguenta {lotes} lotes",
+            "lotes_possiveis": possiveis,
+            "ingrediente_limitante": cabe.get("limitante"),
+            "porcoes_possiveis": possiveis * int(prato["porcoes"] or 1),
+            "sugestao": "publique menos lotes, ou compre mais do ingrediente "
+                        "que limita antes de publicar",
+        }
 
     no_ar = next((c for c in repo.cardapio_listar()
                   if c["cardapio_id"] == linha["id"]), None)

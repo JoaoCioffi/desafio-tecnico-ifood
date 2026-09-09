@@ -76,6 +76,35 @@ checar("republicar troca preco e lotes",
        and repo.cardapio_listar()[0]["porcoes_disponiveis"] == 8)
 repo.cardapio_publicar(1, 17.00, 3)
 
+print("\n  --- publicar respeita a despensa ---")
+# A despensa do teste tem 2 kg de frango e a receita pede 0,400 por lote.
+# Cabem 5 lotes; o sexto nao existe.
+repo.cardapio_retirar(1)
+checar("recusa lotes que a despensa nao aguenta",
+       repo.cardapio_publicar(1, 17.00, 6) is None, "pediu 6, cabem 5")
+checar("aceita exatamente o que cabe",
+       repo.cardapio_publicar(1, 17.00, 5) is not None)
+
+cabe = repo.lotes_possiveis(1)
+checar("lotes_possiveis diz o teto e quem limita",
+       cabe["lotes"] == 5 and cabe["limitante"] == "Peito de frango",
+       f"{cabe['lotes']} lotes, limita {cabe['limitante']}")
+
+checar("republicar o MESMO numero nao se recusa sozinho",
+       repo.cardapio_publicar(1, 18.00, 5) is not None,
+       "o comprometido dele volta para a conta")
+
+with repo._pool.connection() as cx, cx.cursor() as cur:
+    neg = cur.execute("SELECT count(*) AS n FROM vw_estoque "
+                      "WHERE disponivel < 0").fetchone()
+checar("nenhum ingrediente ficou negativo", neg["n"] == 0)
+
+repo.cardapio_publicar(1, 17.00, 3)   # volta ao cenario dos testes seguintes
+# `cardapio_retirar` + publicar cria linha NOVA, com id novo. O `cid` de cima
+# aponta para a publicacao aposentada — reler aqui e o que evita os testes
+# seguintes cobrarem porcoes de um cardapio que saiu do ar.
+cid = repo.cardapio_listar()[0]["cardapio_id"]
+
 print("\n  --- pedido ---")
 checar("nao vende prato que nao existe no cardapio",
        repo.pedido_registrar(99999, "ana", 1) is None)

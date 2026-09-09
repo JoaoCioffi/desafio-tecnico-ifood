@@ -290,23 +290,74 @@ def orcamento() -> dict:
 #  isso as regras de venda vivem em SQL e nao em prompt; um prompt vale para o
 #  agente que o carrega, uma constraint vale para todo mundo.
 # --------------------------------------------------------------------------- #
+# Quanto ESTE prato ja compromete hoje, por ingrediente. `vw_estoque.comprometido`
+# inclui a publicacao atual dele, entao republicar com o mesmo numero se recusaria
+# sozinho se a gente nao devolvesse isso para a conta. COALESCE 1 porque prato
+# aceito e nao publicado ja segura uma receita.
+_LOTES_ATUAIS = """
+    COALESCE((SELECT c.lotes FROM cardapio c
+               WHERE c.prato_id = pi.prato_id AND c.retirado_em IS NULL), 1)
+"""
+
+
+def lotes_possiveis(prato_id: int) -> dict | None:
+    """Quantos lotes a despensa aguenta hoje, e qual ingrediente limita.
+
+    Existe para a recusa ser util. "Nao da" manda o agente adivinhar o proximo
+    numero; "da para 2, o leite integral limita" e uma frase que ela entende e
+    sobre a qual decide.
+    """
+    with _pool.connection() as conexao, conexao.cursor() as cur:
+        return cur.execute(
+            f"""
+            SELECT MIN(FLOOR((e.disponivel + pi.quantidade * {_LOTES_ATUAIS})
+                             / pi.quantidade))::int AS lotes,
+                   (ARRAY_AGG(pi.ingrediente ORDER BY
+                        (e.disponivel + pi.quantidade * {_LOTES_ATUAIS})
+                        / pi.quantidade))[1] AS limitante
+              FROM pratos_ingredientes pi
+              JOIN vw_estoque e ON e.ingrediente = pi.ingrediente
+             WHERE pi.prato_id = %(prato_id)s
+            """,
+            {"prato_id": prato_id},
+        ).fetchone()
+
+
 def cardapio_publicar(prato_id: int, preco, lotes: int = 1) -> dict | None:
     """Poe um prato ACEITO a venda. Devolve None se o prato nao pode ir ao ar.
 
-    O filtro de status esta no proprio INSERT, nao numa consulta antes dele:
-    checar e depois inserir deixa uma janela entre as duas coisas, e o valor
-    lido pode nao valer mais na hora da escrita. Uma sentenca so nao tem janela.
+    Duas condicoes, e as duas moram no proprio INSERT: o prato tem que estar
+    aceito, e a despensa tem que aguentar os lotes pedidos.
+
+    A segunda estava so na skill — "confira a despensa antes de publicar numero
+    alto". Instrucao em prompt vale para o agente que a carrega e cede quando
+    alguem insiste; foi por isso que o gate de viabilidade virou hook em vez de
+    paragrafo no SOUL. Publicar 3 lotes de um prato que so tem despensa para 2
+    deixaria o estoque NEGATIVO, e ela descobriria na hora de cozinhar — que e
+    exatamente o que o enunciado manda impedir.
+
+    Checar antes e inserir depois nao serve: entre a leitura e a escrita o
+    numero pode mudar. Uma sentenca so nao tem essa janela.
 
     Republicar troca preco e lotes em vez de criar linha nova — o indice
     parcial `idx_cardapio_ativo` so admite uma publicacao ativa por prato.
     """
     with _pool.connection() as conexao, conexao.cursor() as cur:
         return cur.execute(
-            """
+            f"""
             INSERT INTO cardapio (prato_id, preco, lotes)
             SELECT p.id, %(preco)s, %(lotes)s
               FROM pratos p
-             WHERE p.id = %(prato_id)s AND p.status = 'aceito'
+             WHERE p.id = %(prato_id)s
+               AND p.status = 'aceito'
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM pratos_ingredientes pi
+                     JOIN vw_estoque e ON e.ingrediente = pi.ingrediente
+                    WHERE pi.prato_id = p.id
+                      AND e.disponivel + pi.quantidade * {_LOTES_ATUAIS}
+                          < pi.quantidade * %(lotes)s
+               )
             ON CONFLICT (prato_id) WHERE retirado_em IS NULL
             DO UPDATE SET preco = EXCLUDED.preco,
                           lotes = EXCLUDED.lotes,
