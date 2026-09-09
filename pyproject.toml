@@ -29,4 +29,9 @@ dev = ["pytest>=8.0"]
 [tool.pytest.ini_options]
 addopts = "--doctest-modules -q"
 pythonpath = ["src/backend"]
-testpaths = ["src/backend/domain", "src/backend/tests"]
+#  `.docker/runner.py` entra pelo caminho do ARQUIVO, nao do diretorio: o
+#  `norecursedirs` padrao do pytest pula tudo que comeca com ponto, entao
+#  `.docker` nunca seria varrido. O runner e host-side e nao faz parte do
+#  dominio, mas a serie do painel tem logica de escala propria — e ja escondeu
+#  um bug de fatiamento — entao os doctests dela rodam junto.
+testpaths = ["src/backend/domain", "src/backend/tests", ".docker/runner.py"]

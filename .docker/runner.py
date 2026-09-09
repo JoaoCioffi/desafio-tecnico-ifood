@@ -143,15 +143,16 @@ def _imprimivel(texto: str) -> bool:
 if _imprimivel("✓✗•⠋…▁█↗→↘"):
     OK, FALHA, PONTO, CORTE = "✓", "✗", "•", "…"
     GIRO = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    # Quatro barras crescentes, todas na mesma linha de base: sinal de wifi.
-    # Sao quatro porque 4 divide 100 em 25/50/75 — os mesmos cortes das cores,
-    # entao a altura e a cor contam sempre a mesma historia.
-    NIVEIS = "▂▄▆█"
+    # Oito alturas de bloco, todas assentadas na mesma linha de base: uma
+    # amostra por coluna desenha a curva do historico.
+    NIVEIS = "▁▂▃▄▅▆▇█"
     SOBE, IGUAL, DESCE = "↗", "→", "↘"
 else:
     OK, FALHA, PONTO, CORTE = "+", "x", "*", "~"
     GIRO = "|/-\\"
-    NIVEIS = ".-=+"
+    # Rampa de tinta crescente. Nao ha altura em ASCII, entao a leitura vira
+    # densidade — pior, mas so aparece em console que nao aceita UTF-8.
+    NIVEIS = "._-=+*#@"
     SOBE, IGUAL, DESCE = "^", "=", "v"
 
 # Pulso do npm install: um ponto que anda enquanto algo sobe.
@@ -184,9 +185,22 @@ def redigir(texto: str) -> str:
 
 
 class Serie:
-    """Historico curto de uma metrica: vira sparkline e seta de tendencia."""
+    """Historico curto de uma metrica: vira curva e seta de tendencia."""
 
-    def __init__(self, tamanho: int = 12) -> None:
+    # Amplitude minima da janela de desenho, em pontos percentuais.
+    #
+    # Sem ela, uma serie parada faria max == min e a divisao estouraria. Com
+    # ela, uma serie parada ocupa um degrau so, e o ruido de centesimo que
+    # existe em toda leitura de CPU nao vira montanha. O numero e o preco
+    # dessa escolha: variacao menor que 1 ponto percentual e desenhada como
+    # menor que a altura cheia, em vez de preencher o grafico.
+    PISO = 1.0
+
+    def __init__(self, tamanho: int = 60) -> None:
+        # Guarda mais do que costuma caber na tela: a largura do desenho sai
+        # do terminal, que pode ser largo, e sobra vira historico descartado
+        # na hora de desenhar, em vez de amostra que nunca foi coletada.
+        # A 3s por amostra, 60 sao tres minutos.
         self._valores: deque[float] = deque(maxlen=tamanho)
 
     def anotar(self, valor: float | None) -> None:
@@ -197,39 +211,109 @@ class Serie:
     def atual(self) -> float | None:
         return self._valores[-1] if self._valores else None
 
-    def sinal(self) -> tuple[str, str]:
-        """Medidor de nivel, estilo barra de sinal: (acesas, apagadas).
+    def _escala(self, valores: list[float]) -> tuple[float, float]:
+        """Janela vertical do desenho: o proprio min/max, nunca menor que PISO.
 
-        Trocou o sparkline de historico porque ele nao servia para o que se
-        olha aqui. Numa escala fixa de 0 a 100% a CPU vive perto do chao, e
-        oito barrinhas identicas em `▁` nao informam nada — a linha virava
-        enfeite. O medidor responde a pergunta certa: quanto do teto ja foi.
+        Aqui esta a diferenca em relacao ao medidor que havia antes. Numa
+        escala fixa de 0 a 100 a maquina ociosa vive colada no chao: CPU a
+        0,3% e CPU a 0,9% desenham identicas, e a linha vira enfeite. Contra
+        o proprio historico, 0,3 e 0,9 ficam a degraus de distancia e da para
+        ver a maquina respirar.
 
-        Vem partido em duas metades para o desenho pintar cada uma de uma
-        cor; juntar aqui exigiria devolver escape de cor no meio do texto, e
-        aquilo contaria como caractere visivel no alinhamento da coluna.
+        O preco e que a altura passa a ser relativa: curva cheia significa
+        "variou o maximo que variou nestes tres minutos", nao "esta cheio". A
+        COR carrega o absoluto (`cor_faixa`, sobre o valor de agora) e o
+        numero ao lado da a leitura exata. Sao tres perguntas diferentes, e
+        cada uma tem seu canal.
+
+        O chao da janela e sempre o MENOR valor do historico; o piso so
+        levanta o teto. E o que faz serie parada desenhar rente ao chao em vez
+        de virar uma parede na meia altura: sem isso, um disco cravado em
+        0,55% ficaria identico a um disco em 50%, e a linha mentiria com todas
+        as letras.
+
+        >>> def serie(*v):
+        ...     s = Serie()
+        ...     for x in v:
+        ...         s.anotar(x)
+        ...     return s
+        >>> serie()._escala([0.55, 0.55, 0.55])       # parada: o piso levanta o teto
+        (0.55, 1.55)
+        >>> serie()._escala([2.0, 40.0, 91.0])        # variou: manda o proprio min/max
+        (2.0, 91.0)
         """
-        valor = self.atual
-        acesas = (max(1, min(len(NIVEIS), int(valor / 100 * len(NIVEIS)) + 1))
-                  if valor is not None else 0)
+        lo, hi = min(valores), max(valores)
+        if hi - lo < self.PISO:
+            hi = lo + self.PISO
+        return lo, hi
 
-        # As quatro barras aparecem SEMPRE; o que muda e quais estao acesas.
-        # Trocar a apagada por outro glifo (ponto, espaco) quebra o desenho:
-        # o ponto flutua no meio da celula enquanto o bloco senta na base, e
-        # a barra fica torta.
-        #
-        return NIVEIS[:acesas], NIVEIS[acesas:]
+    def curva(self, largura: int) -> str:
+        """As ultimas `largura` amostras, uma coluna cada, mais nova a direita.
+
+        A guarda do zero nao e defensiva, e necessaria: `lista[-0:]` e
+        `lista[0:]`, ou seja, a lista TODA. Sem ela, pedir zero coluna devolve
+        o historico inteiro, e `f"{s:>0}"` nao trunca nada — o painel
+        imprimia sessenta blocos justamente no terminal estreito onde a curva
+        deveria ter sumido.
+
+        Os exemplos comparam INDICES em NIVEIS, nao os glifos: o alfabeto do
+        desenho muda conforme o console aceite UTF-8, e um doctest preso ao
+        bloco Unicode quebraria no console que caiu no ASCII.
+
+        >>> def serie(*v):
+        ...     s = Serie()
+        ...     for x in v:
+        ...         s.anotar(x)
+        ...     return s
+        >>> serie(1, 2, 3).curva(0)                   # sem espaco, nada desenhado
+        ''
+        >>> serie().curva(10)                         # antes da primeira coleta
+        ''
+        >>> [NIVEIS.index(c) for c in serie(0, 20, 40, 60, 80, 100).curva(6)]
+        [0, 1, 3, 4, 6, 7]
+        >>> [NIVEIS.index(c) for c in serie(*[0.55] * 4).curva(4)]
+        [0, 0, 0, 0]
+        >>> len(serie(*range(50)).curva(12))          # so as ultimas que cabem
+        12
+        """
+        if largura <= 0:
+            return ""
+        valores = list(self._valores)[-largura:]
+        if not valores:
+            return ""
+        lo, hi = self._escala(valores)
+        degrau = (hi - lo) / len(NIVEIS)
+        return "".join(
+            NIVEIS[max(0, min(len(NIVEIS) - 1, int((v - lo) / degrau)))]
+            for v in valores
+        )
 
     def tendencia(self) -> str:
-        """Seta contra a leitura anterior, com zona morta.
+        """Seta do valor de agora contra a MEDIA do historico, com zona morta.
 
-        Sem a zona morta a seta pisca a cada quadro por causa de ruido de
-        centesimo de por cento, e vira barulho em vez de informacao.
+        Comparar so com a leitura anterior parece o obvio e erra nos dois
+        extremos. Numa rampa lenta cada passo e minusculo, entao a seta fica
+        congelada em `→` enquanto a curva desenha uma escada evidente. E logo
+        depois de um pico, as duas ultimas amostras ja empataram no chao e a
+        seta perde a descida inteira.
+
+        Contra a media, a pergunta vira "estou acima ou abaixo de onde tenho
+        estado", que e o que a seta ao lado de um historico deveria responder.
+        A rampa acusa desde o comeco, e a queda depois de um pico acusa `↘`
+        na descida e volta a `→` quando a leitura assenta — a montanha
+        continua desenhada na curva, mas ja nao e novidade.
+
+        A zona morta acompanha a escala do desenho em vez de ser um numero
+        fixo em pontos percentuais: a seta mexe quando a curva mexeria
+        tambem. Fixa, ficaria travada exatamente nas metricas que vivem perto
+        do chao — as que esta escala movel existe para tornar legiveis.
         """
-        if len(self._valores) < 2:
+        valores = list(self._valores)
+        if len(valores) < 2:
             return IGUAL
-        delta = self._valores[-1] - self._valores[-2]
-        if abs(delta) < 0.5:
+        lo, hi = self._escala(valores)
+        delta = valores[-1] - sum(valores) / len(valores)
+        if abs(delta) < (hi - lo) / len(NIVEIS):
             return IGUAL
         return SOBE if delta > 0 else DESCE
 
@@ -1013,12 +1097,28 @@ def _mil(n: float) -> str:
     return f"{n / 1000:.0f}k" if n >= 1000 else str(int(n))
 
 
-def linha_metrica(nome: str, serie: Serie, texto: str, coluna: int) -> str:
+# Tudo que a linha gasta fora da curva: margem, seta, nome, os dois espacos
+# antes do texto, o texto e o percentual. Sai daqui a largura que sobra para
+# o desenho — cravar um numero faria a curva vazar ou sobrar buraco conforme
+# o terminal.
+_FIXO_METRICA = 2 + 1 + 1 + 5 + 2 + 1 + 8
+
+
+def linha_metrica(nome: str, serie: Serie, texto: str, coluna: int, curva: int) -> str:
     valor = serie.atual
     cor = cor_faixa(valor)
-    acesas, apagadas = serie.sinal()
-    numero = f"{valor:.1f} %" if valor is not None else "—"
-    return (f"  {serie.tendencia()} {D}{nome:<6}{R}{cor}{acesas}{R}{D}{apagadas}{R}  "
+    # Duas casas porque a maquina nunca esta exatamente parada: com uma casa,
+    # tudo abaixo de 0,05% vira "0.0 %" e a coluna toda mente junto.
+    numero = f"{valor:.2f} %" if valor is not None else "—"
+    # A curva inteira na cor do valor de AGORA. Pintar cada coluna pela
+    # propria leitura seria mais fiel e ilegivel: dezenas de trocas de cor por
+    # linha, e o painel deixaria de ser painel.
+    desenho = serie.curva(curva)
+    # Alinhada a DIREITA: a amostra de agora fica cravada sempre na mesma
+    # coluna e o historico cresce para tras. A esquerda, a borda do presente
+    # andaria para o lado durante os tres primeiros minutos, e o olho leria
+    # movimento onde so ha buffer enchendo.
+    return (f"  {serie.tendencia()} {D}{nome:<5}{R}{cor}{desenho:>{curva}}{R}  "
             f"{texto:>{coluna}} {cor}{numero:>8}{R}")
 
 
@@ -1039,12 +1139,23 @@ def bloco_hardware(tel: Telemetria) -> list[str]:
     # empurraria o percentual para fora do lugar em uma das duas.
     coluna = max(len(t) for _, _, t in metricas)
 
-    # Linha em branco entre as metricas: as barras sao blocos altos e, coladas
-    # verticalmente, formam uma parede continua onde nao se distingue onde uma
-    # medida termina e a outra comeca.
-    linhas = [f"  {B}HARDWARE{R}"]
+    # A curva come o que sobrar da linha, ate um teto de 60 — mais que isso
+    # vira uma faixa larga demais para o olho seguir em tela cheia.
+    #
+    # E some inteira quando sobra pouco. Um piso aqui empurraria a linha para
+    # fora da tela, e quem corta e o `cortar`, que corta pela direita: morreria
+    # o percentual para salvar tres blocos sem forma. A curva e a parte
+    # descartavel desta linha; o numero nao e.
+    curva = min(60, largura() - _FIXO_METRICA - coluna)
+    if curva < 6:
+        curva = 0
+
+    # As linhas voltam a ficar coladas: as colunas agora tem alturas diferentes
+    # e cada serie ja se le como uma forma propria. Era a barra chapada de
+    # antes, repetida identica em toda linha, que precisava do respiro.
+    linhas = [f"  {B}HARDWARE{R}", ""]
     for nome, serie, texto in metricas:
-        linhas += ["", linha_metrica(nome, serie, texto, coluna)]
+        linhas.append(linha_metrica(nome, serie, texto, coluna, curva))
     return linhas
 
 
