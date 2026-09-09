@@ -58,6 +58,13 @@ ENV = RAIZ / ".env"
 DADOS_HERMES = AQUI / "hermes-data"      # dados do agente — fora do git
 PERFIL = AQUI / "hermes-profile" / "config.yaml"  # delta versionado
 BASELINE = AQUI / "hermes-profile" / "config.base.yaml"  # config completa do wizard
+
+# O segundo agente: o balcao do "Bora Pedir". HERMES_HOME proprio porque a
+# doc do Hermes e categorica — "never point two agent processes at the same
+# profile"; escrita concorrente corrompe a memoria compartilhada. A BASELINE
+# e a mesma: o que muda entre os dois e o delta, nao a instalacao.
+DADOS_CLIENTE = AQUI / "hermes-data-cliente"
+PERFIL_CLIENTE = AQUI / "hermes-profile-cliente" / "config.yaml"
 ESQUEMA = AQUI / "db.sql"
 PLANILHA = RAIZ / "shared" / "despensa_dona_maria.xlsx"
 
@@ -94,6 +101,7 @@ REDE = "sabor-da-maria-net"
 # do agente, entao aparece como linha dentro de INFRA.
 CONTAINERS = {"postgres": "sabor-da-maria-db",
               "hermes": "sabor-da-maria-hermes",
+              "cliente": "sabor-da-maria-cliente",
               "mcp": "sabor-da-maria-mcp"}
 
 # Sem estas o compose sobe com string vazia e o erro so aparece la na frente,
@@ -804,7 +812,7 @@ def exigir_docker() -> str:
     return proc.stdout.strip() or "?"
 
 
-def semear_baseline() -> bool:
+def semear_baseline(dados: Path = DADOS_HERMES) -> bool:
     """Planta a config completa do wizard quando nao ha nenhuma. Devolve se plantou.
 
     E o que dispensa o wizard num clone limpo. O delta sozinho nao basta:
@@ -817,21 +825,26 @@ def semear_baseline() -> bool:
     manda no config.yaml e o par (agente, delta), nao este arquivo.
     """
     global CONFIG_ORIGEM
-    if hermes_configurado():
-        CONFIG_ORIGEM = "reaproveitada de hermes-data"
+    # O painel so reporta a origem do perfil PRINCIPAL: a linha diz "config"
+    # no bloco HERMES, e duas origens ali confundiriam mais do que informam.
+    principal = dados == DADOS_HERMES
+    if hermes_configurado(dados):
+        if principal:
+            CONFIG_ORIGEM = "reaproveitada de hermes-data"
         return False
     if not BASELINE.is_file():
         return False
-    DADOS_HERMES.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(BASELINE, DADOS_HERMES / "config.yaml")
-    CONFIG_ORIGEM = f"semeada de {BASELINE.name} {D}·{R} wizard dispensado"
+    dados.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(BASELINE, dados / "config.yaml")
+    if principal:
+        CONFIG_ORIGEM = f"semeada de {BASELINE.name} {D}·{R} wizard dispensado"
     return True
 
 
-def hermes_configurado() -> bool:
+def hermes_configurado(dados: Path = DADOS_HERMES) -> bool:
     """O `gateway run` exige um config.yaml. Sem ele o container entra em
     crash loop e o `restart: unless-stopped` esconde o motivo repetindo."""
-    return (DADOS_HERMES / "config.yaml").is_file()
+    return (dados / "config.yaml").is_file()
 
 
 # --------------------------------------------------------------------------- #
@@ -1146,22 +1159,23 @@ def bloco_infra(estados: dict[str, dict], tel: Telemetria,
 # --------------------------------------------------------------------------- #
 # HERMES
 # --------------------------------------------------------------------------- #
-def estado_gateway() -> dict:
+def estado_gateway(dados: Path = DADOS_HERMES) -> dict:
     """Le o gateway_state.json do bind mount.
 
     Sai de graca: o arquivo esta no disco do host, entao nao custa um
     `docker exec` por quadro. E e a unica fonte que sabe se o Telegram esta
     conectado — o container estar `running` nao diz nada sobre isso.
     """
-    alvo = DADOS_HERMES / "gateway_state.json"
+    alvo = dados / "gateway_state.json"
     try:
         return json.loads(alvo.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
-def bloco_hermes(info: dict[str, str], tel: Telemetria,
-                 variaveis: dict[str, str], quadro: int) -> list[str]:
+def bloco_hermes(info: dict[str, str], cliente: dict[str, str] | None,
+                 tel: Telemetria, variaveis: dict[str, str],
+                 quadro: int) -> list[str]:
     linhas = [titulo("HERMES", info, quadro)]
     if info["status"] != "running":
         return linhas
@@ -1179,6 +1193,21 @@ def bloco_hermes(info: dict[str, str], tel: Telemetria,
             partes.append(f"{cor}{nome} {dados.get('state', '?')}{R}")
         linhas.append(campo("gateway", f"{estado.get('gateway_state', '?')} {D}·{R} "
                                        + f" {D}·{R} ".join(partes)))
+    # O segundo agente entra como LINHA, nao como bloco: o painel tem tres
+    # blocos e essa regra vale mais que a simetria. Aqui interessa so se ele
+    # esta de pe e se o Telegram dele conectou — o resto do que ele faz aparece
+    # no banco, que e onde os dois se encontram.
+    if cliente is not None:
+        if cliente["status"] == "running":
+            tg = estado_gateway(DADOS_CLIENTE).get("platforms", {}).get("telegram", {})
+            liga = tg.get("state", "conectando…")
+            cor = VERDE if liga == "connected" else AMAR
+            estado_txt = f"{VERDE}no ar{R} {D}·{R} {cor}telegram {liga}{R}"
+        else:
+            estado_txt = f"{AMAR}{cliente['status']}{R}"
+        linhas.append(campo("cliente", f"{estado_txt} {D}· bot do cliente, "
+                                       f"toolset proprio{R}"))
+
     ag = tel.agente
     if tel.modelo:
         # O modelo em uso pode divergir do configurado: um /model no meio da
@@ -1357,7 +1386,8 @@ def monitorar(variaveis: dict[str, str], versao: str, timeout: int = 120) -> Non
                 "",
                 *bloco_infra(estados, tel, variaveis, quadro),
                 "",
-                *bloco_hermes(estados["hermes"], tel, variaveis, quadro),
+                *bloco_hermes(estados["hermes"], estados.get("cliente"),
+                              tel, variaveis, quadro),
                 "",
                 *bloco_hardware(tel),
             ]
@@ -1450,8 +1480,9 @@ def fundir(base: dict, novo: dict, prefixo: str = "") -> tuple[dict, list[str]]:
     return saida, mudancas
 
 
-def instalar_arquivos_do_perfil() -> None:
-    """Copia tudo que nao seja o config.yaml de hermes-profile/ para hermes-data/.
+def instalar_arquivos_do_perfil(perfil: Path = PERFIL,
+                                dados: Path = DADOS_HERMES) -> None:
+    """Copia tudo que nao seja o config.yaml do perfil para o HERMES_HOME.
 
     O Hermes le SOUL.md, skills/ e agent-hooks/ do HERMES_HOME, nunca de um
     repositorio. Sem este passo, versionar esses arquivos nao teria efeito
@@ -1463,27 +1494,29 @@ def instalar_arquivos_do_perfil() -> None:
     no menu de comandos do Telegram, que o Hermes limita a 60: com 58 skills
     de fabrica, as NOSSAS podem simplesmente nao caber.
     """
-    origem = PERFIL.parent
+    origem = perfil.parent
     if not origem.is_dir():
         return
 
-    (DADOS_HERMES / ".no-bundled-skills").touch()
+    dados.mkdir(parents=True, exist_ok=True)
+    (dados / ".no-bundled-skills").touch()
 
     for item in origem.iterdir():
-        if item.name in (PERFIL.name, BASELINE.name):
+        if item.name in (perfil.name, BASELINE.name):
             # Os dois arquivos de config tem caminho proprio: a baseline e
             # semeada por semear_baseline(), o delta e fundido por
             # aplicar_perfil(). Copiar qualquer um aqui so deixaria uma copia
             # morta em hermes-data, que ninguem le e todo mundo confunde.
             continue
-        destino = DADOS_HERMES / item.name
+        destino = dados / item.name
         if item.is_dir():
             shutil.copytree(item, destino, dirs_exist_ok=True)
         else:
             shutil.copy2(item, destino)
 
 
-def aplicar_perfil() -> None:
+def aplicar_perfil(perfil: Path = PERFIL, dados: Path = DADOS_HERMES,
+                   rotulo: str = "") -> None:
     """Funde o delta versionado no config.yaml do agente.
 
     E o que torna a instalacao reproduzivel: quem clonar o repositorio e
@@ -1492,10 +1525,10 @@ def aplicar_perfil() -> None:
     fora do git — ele guarda .env, auth.json e sessoes — entao o delta e o
     unico caminho para versionar configuracao sem versionar segredo.
     """
-    if not PERFIL.is_file() or not hermes_configurado():
+    if not perfil.is_file() or not hermes_configurado(dados):
         return
 
-    instalar_arquivos_do_perfil()
+    instalar_arquivos_do_perfil(perfil, dados)
 
     try:
         import yaml
@@ -1504,9 +1537,9 @@ def aplicar_perfil() -> None:
               f"{D}(pip install -r requirements.txt){R}")
         return
 
-    alvo = DADOS_HERMES / "config.yaml"
+    alvo = dados / "config.yaml"
     atual = yaml.safe_load(alvo.read_text(encoding="utf-8")) or {}
-    delta = yaml.safe_load(PERFIL.read_text(encoding="utf-8")) or {}
+    delta = yaml.safe_load(perfil.read_text(encoding="utf-8")) or {}
     fundido, mudancas = fundir(atual, delta)
     if not mudancas:
         return
@@ -1518,7 +1551,7 @@ def aplicar_perfil() -> None:
         yaml.safe_dump(fundido, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
-    PERFIL_APLICADO.extend(mudancas)
+    PERFIL_APLICADO.extend(f"{rotulo}{m}" for m in mudancas)
 
 
 # --------------------------------------------------------------------------- #
@@ -1744,8 +1777,8 @@ def remover_arvore(caminho: Path) -> list[str]:
 def apagar_tudo() -> None:
     confirmar(
         f"apaga {B}containers, volume, rede, imagens{R} e {B}os dados do agente{R}\n"
-        f"    {D}o banco inteiro, e {DADOS_HERMES.name}/ com config, memorias, "
-        f"sessoes e o historico de conversa.{R}\n"
+        f"    {D}o banco inteiro, e {DADOS_HERMES.name}/ e {DADOS_CLIENTE.name}/ "
+        f"com config, memorias, sessoes e o historico dos DOIS agentes.{R}\n"
         f"    {D}o que volta sozinho no proximo `runner.py`: config (da baseline "
         f"versionada), SOUL, skills e hooks.{R}",
         "apagar",
@@ -1758,17 +1791,18 @@ def apagar_tudo() -> None:
     subprocess.run(["docker", "network", "rm", REDE], capture_output=True)
     print(f"  {VERDE}{OK}{R} containers, volume, rede e imagens removidos")
 
-    if DADOS_HERMES.exists():
-        if restos := remover_arvore(DADOS_HERMES):
-            print(f"  {AMAR}{FALHA}{R} {DADOS_HERMES.name}/ saiu pela metade, "
+    for pasta in (DADOS_HERMES, DADOS_CLIENTE):
+        if not pasta.exists():
+            continue
+        if restos := remover_arvore(pasta):
+            print(f"  {AMAR}{FALHA}{R} {pasta.name}/ saiu pela metade, "
                   f"{len(restos)} item(ns) presos:")
             for resto in restos[:3]:
                 print(f"      {D}{resto}{R}")
             print(f"  {D}costuma ser handle do Docker Desktop; repita em alguns "
                   f"segundos{R}")
         else:
-            print(f"  {VERDE}{OK}{R} dados do agente removidos "
-                  f"{D}· {DADOS_HERMES.name}/{R}")
+            print(f"  {VERDE}{OK}{R} dados removidos {D}· {pasta.name}/{R}")
 
     print(f"\n  {D}o proximo {R}{B}python .docker/runner.py{R}{D} reconstroi tudo "
           f"do zero, sem wizard:{R}")
@@ -1810,10 +1844,16 @@ def main() -> None:
     # YAML e instala as skills. Num clone limpo isso demora o bastante para a
     # tela parecer travada — e tela parada nao distingue trabalhando de morto.
     # O resultado nao vira print: aparece no bloco HERMES do painel.
-    with Pulsando("carregando config do Hermes"):
+    with Pulsando("carregando config dos agentes"):
         semear_baseline()
         if hermes_configurado():
             aplicar_perfil()
+        # O balcao do cliente, do mesmo jeito e a partir da MESMA baseline.
+        # O prefixo no rotulo e o que faz o painel distinguir de quem e cada
+        # mudanca — sem ele as duas listas viram uma so, sem dono.
+        semear_baseline(DADOS_CLIENTE)
+        if hermes_configurado(DADOS_CLIENTE):
+            aplicar_perfil(PERFIL_CLIENTE, DADOS_CLIENTE, rotulo="cliente:")
 
     if not hermes_configurado():
         raise RuntimeError(

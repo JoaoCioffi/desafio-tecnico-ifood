@@ -1,0 +1,97 @@
+# Customizacoes do Hermes para o BOT DO CLIENTE.
+#
+# Mesmo formato do delta da Dona Maria (.docker/hermes-profile/config.yaml):
+# o runner funde estas chaves sobre a mesma `config.base.yaml`, num
+# HERMES_HOME proprio (.docker/hermes-data-cliente/).
+#
+# Sao dois processos separados, nao dois perfis dentro de um gateway. A doc do
+# Hermes trata perfil como diretorio isolado — config, .env, SOUL, memoria,
+# sessoes e state db — e avisa que dois processos NUNCA devem apontar para o
+# mesmo. Container por agente e o jeito mais direto de garantir isso, e espelha
+# a realidade: o app da cozinheira e o app de quem pede sao aplicativos
+# diferentes.
+#
+# Os dois agentes nao trocam mensagem. Coordenam pelo Postgres, atraves do
+# mesmo servidor MCP. A doc do Hermes diz que perfis que precisam de estado
+# comum devem usar um "external memory provider" — o nosso ja era esse, por
+# outro motivo: manter numero fora do alcance do modelo.
+
+model:
+  default: gpt-5.6-sol
+  provider: openai-api
+  base_url: https://api.openai.com/v1
+
+terminal:
+  backend: local
+
+database:
+  journal_mode: wal
+
+# --------------------------------------------------------------------------- #
+# Ferramentas
+#
+# Bem menos que a Dona Maria, e nao por economia: o cliente NAO TEM o que fazer
+# com elas. Sem `web` ele nao pesquisa receita; sem `code_execution` nao faz
+# conta; sem `file` e `terminal` nao le nada do disco. Cada ferramenta a mais
+# seria um caminho a mais para o agente inventar comportamento que o balcao de
+# um delivery nao tem.
+#
+#   clarify         perguntar o que faltou no pedido
+#   memory          lembrar do cliente entre conversas
+#   session_search  idem
+#   mcp-sabor       as tres ferramentas de venda
+#
+# As duas listas sao iguais pelo mesmo motivo do outro perfil: a porta de
+# entrada nao deve mudar o comportamento.
+# --------------------------------------------------------------------------- #
+platform_toolsets:
+  cli:
+    - clarify
+    - memory
+    - session_search
+    - mcp-sabor
+  telegram:
+    - clarify
+    - memory
+    - session_search
+    - mcp-sabor
+
+# --------------------------------------------------------------------------- #
+# O mesmo servidor MCP, outra lista de ferramentas
+#
+# Esta lista e a fronteira entre os dois agentes, e ela vive aqui — num arquivo
+# de configuracao lido pelo gateway, fora do alcance do modelo. O cliente nao
+# tem `aceitar_prato`, nao tem `registrar_compra`, nao ve a despensa e nao
+# consulta o orcamento dela.
+#
+# Mas a garantia nao depende so desta lista. As tres ferramentas abaixo nao TEM
+# como violar as regras nem se alguem as expusesse por engano: `fazer_pedido`
+# nao aceita preco (ele sai do cardapio) e so consegue inserir se houver linha
+# em `vw_cardapio` com porcoes suficientes — a condicao esta dentro do proprio
+# INSERT. Config errada aqui daria ao cliente acesso a informacao que nao e
+# dele; nao daria como corromper o caixa dela.
+# --------------------------------------------------------------------------- #
+mcp_servers:
+  sabor:
+    url: "http://mcp:8000/mcp"
+    tools:
+      include:
+        - consultar_cardapio_publico
+        - fazer_pedido
+        - consultar_pedido
+
+# --------------------------------------------------------------------------- #
+# Sem hook aqui
+#
+# O gate de viabilidade e da Dona Maria: ele protege a decisao de fechar um
+# prato, que e dela. O cliente nao tem `aceitar_prato` para ser barrado.
+#
+# Repare que o `hooks_auto_accept` tambem NAO aparece. Ele existe no outro
+# perfil porque la ha hook para registrar; aqui ligaria uma aceitacao
+# automatica sem nada para aceitar.
+# --------------------------------------------------------------------------- #
+
+providers:
+  openai-api:
+    stale_timeout_seconds: 180
+    request_timeout_seconds: 900
