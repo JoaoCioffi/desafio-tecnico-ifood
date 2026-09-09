@@ -76,14 +76,14 @@ só o runner precisa delas.
 │   │   ├───config.yaml                 # modelo, toolsets, servidor MCP e hooks
 │   │   ├───SOUL.md                     # quem o agente é e como conduz a conversa
 │   │   ├───agent-hooks/
-│   │   │   └───gate-viabilidade.py     # trava do aceite: outro processo decide, não o modelo
+│   │   │   └───gate-viabilidade.py     # barra o aceite se faltar algo para fazer o prato
 │   │   └───skills/sabor-da-maria/      # 7 procedimentos, um por diretório
 │   └───hermes-profile-cliente/         # PERFIL DO CLIENTE — 3 ferramentas, nada mais
 ├───src/backend/
 │   ├───domain/                         # as regras de negócio, em Python puro e sem I/O
 │   │   ├───unidades.py                 # normaliza a planilha: pacote vs. medida
 │   │   ├───precificacao.py             # CMV, taxa do app, preço mínimo e margem
-│   │   └───viabilidade.py              # decide se o prato cabe na despensa e no perfil
+│   │   └───viabilidade.py              # as regras: tem ingrediente? tem panela? cabe no bolso?
 │   └───mcp_server/
 │       ├───server.py                   # as 18 ferramentas, em FastMCP sobre HTTP
 │       ├───repo.py                     # única camada que fala SQL (psycopg)
@@ -112,21 +112,24 @@ só o runner precisa delas.
 | Onde o SQL vive?                            | `src/backend/mcp_server/repo.py` e `.docker/db.sql`                                           |
 | Onde as regras de negócio são calculadas? | `src/backend/domain/`, e as views do `db.sql`                                                 |
 
-**A trava do aceite.** `aceitar_prato` grava o prato como escolhido, e é a única ferramenta
-que não pode ser chamada na confiança. Antes de despachá-la, o Hermes executa
-`gate-viabilidade.py` como processo separado: manda a chamada em JSON pelo stdin, lê a
-decisão do stdout. O script consulta `GET /gate/{prato_id}` no servidor MCP e responde
-**libera** ou **bloqueia**, com a lista de pendências.
+**A trava do aceite.** Antes de a Dona Maria fechar um prato, alguém precisa conferir se
+ela consegue mesmo fazê-lo: os ingredientes estão na despensa nas quantidades certas, ela
+tem a panela e a técnica que a receita pede, e o que falta comprar cabe nos R$ 80. Se
+qualquer uma dessas respostas for não, aceitar o prato é deixá-la gastar dinheiro para
+descobrir o problema depois — que é exatamente o que o enunciado manda evitar.
 
-Quem decide é `domain/viabilidade.py`, comparando o prato com a despensa, os utensílios, a
-técnica e o orçamento — dados do banco, não do que foi dito na conversa. O script não é uma
-ferramenta do toolset: o modelo não pode chamá-lo nem deixar de chamá-lo, o código nunca
-entra no contexto dele, e quem decide executar é o Hermes. Se o hook cair ou estourar os
-15s, `fail_closed: true` bloqueia por padrão.
+Quem confere é o `gate-viabilidade.py`, e ele roda **antes** da ferramenta `aceitar_prato`,
+não depois. O Hermes intercepta a chamada, executa o script como processo separado, manda a
+chamada em JSON pelo stdin e lê a decisão no stdout. O script pergunta `GET /gate/{prato_id}`
+ao servidor MCP, que compara a receita com o banco — despensa, perfil e orçamento, nunca com
+o que foi dito na conversa. Volta **libera**, e a ferramenta segue; volta **bloqueia**, e ela
+não roda, com a lista do que faltou.
 
-A mesma regra escrita no `SOUL.md` seria uma frase no prompt: obedecida quase sempre, e
-ignorada justamente quando alguém insistisse. Aqui ela é um `exit 2`. As pendências voltam
-para o agente virarem pergunta à Dona Maria — nunca para serem contornadas.
+Por que um hook e não uma instrução no `SOUL.md`: no prompt isso seria um pedido, obedecido
+quase sempre e ignorado justamente quando alguém insistisse ("confia em mim, pode aceitar").
+Como hook é um `exit 2` — o modelo não pode chamá-lo nem pular, porque não é uma ferramenta
+dele, e se o script cair ou estourar os 15s o `fail_closed: true` bloqueia por padrão. As
+pendências voltam para o agente virarem pergunta à Dona Maria, não para serem contornadas.
 
 ---
 
