@@ -1,0 +1,226 @@
+# Customizacoes do Hermes para o Sabor da Maria.
+#
+# Este arquivo NAO substitui o config.yaml do Hermes — ele e o nosso DELTA.
+# O runner funde estas chaves em .docker/hermes-data/config.yaml preservando
+# todo o resto: o arquivo que o container gera tem centenas de defaults, e
+# sobrescrever inteiro destruiria a instalacao.
+#
+# Regra do merge: dicionario e fundido chave a chave, qualquer outro tipo e
+# substituido. Uma lista, portanto, troca inteira — que e exatamente o que se
+# quer para `platform_toolsets`.
+#
+# Nada de segredo aqui. Chave de API vive no .env da raiz e chega ao container
+# como variavel de ambiente; este arquivo vai para o repositorio.
+
+# --------------------------------------------------------------------------- #
+# Modelo
+#
+# ATENCAO ao nome do provider: o Hermes NAO conhece "openai". O endpoint da
+# OpenAI atende por `openai-api` (existe tambem `openai-codex`, que e outro
+# caminho). O nome errado so falha na primeira chamada de verdade.
+# --------------------------------------------------------------------------- #
+model:
+  default: gpt-5.6-sol
+  provider: openai-api
+  base_url: https://api.openai.com/v1
+
+# --------------------------------------------------------------------------- #
+# Terminal
+#
+# O Hermes ja roda dentro de um container; "local" aqui significa dentro dele,
+# e isso ja e o isolamento. Trocar para `docker` exigiria o socket do Docker
+# montado no container — Docker dentro de Docker — que o compose nao faz.
+# --------------------------------------------------------------------------- #
+terminal:
+  backend: local
+
+# --------------------------------------------------------------------------- #
+# Busca web
+#
+# Exa, e nao ddgs, por causa de uma consequencia: o toolset nao tem browser,
+# entao nao ha como abrir a pagina da receita depois de achar o link. O ddgs
+# e SEARCH-ONLY — devolveria titulo, snippet e URL, e o agente ficaria sem os
+# ingredientes e quantidades, que sao o insumo da secao 2.1 do enunciado.
+#
+# Exa faz busca semantica E extracao de conteudo na mesma chamada, sem chave.
+# `provider_tier: free` fixa o endpoint anonimo mesmo que uma EXA_API_KEY
+# apareca no ambiente um dia — sem isso, a presenca da chave mudaria o
+# caminho de cobranca sem ninguem pedir.
+# --------------------------------------------------------------------------- #
+web:
+  backend: exa
+  provider_tier:
+    exa: free
+
+# --------------------------------------------------------------------------- #
+# Banco de estado do proprio agente (sessoes, memoria, roteamento)
+#
+# Sem esta chave o Hermes reclama a cada boot que achou o journal em `delete`
+# e trocou para WAL. Ele ja usa WAL; fixar aqui e o que cala o aviso.
+# --------------------------------------------------------------------------- #
+database:
+  journal_mode: wal
+
+# --------------------------------------------------------------------------- #
+# Ferramentas
+#
+# A lista default traz de tudo. Cada ferramenta habilitada e um bloco de
+# schema no system prompt de TODA rodada — custa token e dilui a atencao do
+# modelo. Aqui ficam so as que o projeto usa:
+#
+#   memory + session_search   memoria entre sessoes
+#   delegation                subagentes em paralelo
+#   todo + skills             orquestracao (plano e procedimento)
+#   web                       pesquisa
+#   code_execution            calculo sobre dados tabulares, em Python
+#   file + terminal           ler a planilha, rodar o que for preciso
+#   context_engine            compressao de contexto
+#   clarify                   perguntar ao usuario o que falta
+#
+# Fora ficaram:
+#
+#   browser   nao instalado. A extracao de pagina vem do proprio provedor de
+#             busca (ver `web` abaixo), o que dispensa o navegador inteiro.
+#             Manter o toolset injetaria doze ferramentas cujas checagens de
+#             requisito falham neste container — o install do CLI browser-use
+#             quebra por conflito de dependencia (httpx2).
+#   cronjob   nao ha nada agendado.
+# --------------------------------------------------------------------------- #
+#
+# O toolset `mcp-sabor` e dinamico: o Hermes cria um por servidor MCP
+# configurado, nomeado `mcp-<servidor>`. Como estas listas sao explicitas, as
+# ferramentas do nosso servidor NAO entrariam sozinhas — o servidor conectaria,
+# o painel diria que esta tudo bem, e o agente simplesmente nao teria as tools.
+#
+# ATENCAO: `platform_toolsets` e POR PLATAFORMA, e cada uma tem a sua entrada.
+# Mexer so em `cli` nao muda nada no bot do Telegram — ele vinha com o preset
+# `hermes-telegram`, que e um bundle ("full access for personal use") e expande
+# para 53 ferramentas: as 13 do browser, 14 do kanban, 4 do Home Assistant,
+# computer_use, image_generate, text_to_speech e cronjob_manage.
+#
+# As duas listas abaixo sao iguais de proposito: o agente deve se comportar do
+# mesmo jeito seja qual for a porta de entrada.
+# --------------------------------------------------------------------------- #
+platform_toolsets:
+  cli:
+    - clarify
+    - code_execution
+    - context_engine
+    - delegation
+    - file
+    - mcp-sabor
+    - memory
+    - session_search
+    - skills
+    - terminal
+    - todo
+    - web
+  telegram:
+    - clarify
+    - code_execution
+    - context_engine
+    - delegation
+    - file
+    - mcp-sabor
+    - memory
+    - session_search
+    - skills
+    - terminal
+    - todo
+    - web
+
+
+# --------------------------------------------------------------------------- #
+# Servidor MCP do projeto
+#
+# Transporte HTTP, nao stdio. Com stdio o servidor rodaria como subprocesso
+# DENTRO do container do Hermes, e precisaria de psycopg e do nosso `domain/`
+# instalados na venv da imagem — que nao tem pip. Como servico proprio na rede
+# do compose, ele traz as proprias dependencias e o Hermes so consome.
+#
+# `http://` simples de proposito: a rede do compose e interna e a porta nao e
+# publicada no host. TLS aqui protegeria contra ninguem.
+#
+# `tools.include` fixa o que o agente enxerga. Sem ele, toda ferramenta nova
+# que o servidor ganhar entra sozinha no prompt na proxima subida — e a lista
+# de tools do agente deve ser uma decisao, nao um efeito colateral de deploy.
+# --------------------------------------------------------------------------- #
+mcp_servers:
+  sabor:
+    url: "http://mcp:8000/mcp"
+    tools:
+      include:
+        - consultar_despensa
+        - consultar_orcamento
+        - calcular_cmv
+        - cenarios_preco
+        - registrar_perfil
+        - consultar_perfil
+        - propor_prato
+        - checar_prato
+        - aceitar_prato
+        - recusar_prato
+        - consultar_cardapio
+        - registrar_compra
+
+
+# --------------------------------------------------------------------------- #
+# O gate
+#
+# Este bloco e o coracao da entrega. O enunciado diz que o agente "NAO PODE
+# deixar ela comprar ingredientes e descobrir depois que nao consegue
+# cozinhar" — e "nao pode" e garantia, nao pedido.
+#
+# Escrito no SOUL.md, viraria sugestao: o modelo obedece quase sempre e cede
+# quando alguem insiste. Aqui vira subprocesso que roda ANTES do despacho da
+# ferramenta e responde bloqueia/libera. O modelo nao ve este hook, nao pode
+# desliga-lo e nao tem como ser convencido a pula-lo.
+#
+# `fail_closed: true` inverte o default: se o script travar, estourar o tempo
+# ou devolver lixo, a ferramenta e BLOQUEADA em vez de liberada. Um guarda que
+# cai e libera a passagem nao e um guarda.
+#
+# `hooks_auto_accept` NAO e conveniencia. O Hermes pede aprovacao interativa
+# na primeira vez que ve um par (evento, comando), e o gateway roda sem
+# terminal: sem isto, o hook simplesmente NAO SE REGISTRA e apenas loga um
+# aviso. A garantia central da entrega deixaria de existir em silencio.
+# --------------------------------------------------------------------------- #
+hooks_auto_accept: true
+
+hooks:
+  pre_tool_call:
+    # O `.*` NAO e decoracao. O matcher e avaliado com fullmatch, nao com
+    # busca por substring, e o Hermes prefixa toda ferramenta de MCP com o
+    # nome do servidor: a chamada real chega como `mcp__sabor__aceitar_prato`.
+    #
+    # Com `matcher: "aceitar_prato"` o hook fica registrado, o `hermes hooks
+    # doctor` reporta tudo saudavel — e ele nunca dispara. A garantia central
+    # da entrega deixaria de existir sem uma linha de aviso em lugar nenhum.
+    - matcher: ".*aceitar_prato"
+      # Invocado pelo interpretador, e nao pelo shebang: o bit de execucao
+      # nao sobrevive de forma confiavel a um bind mount vindo do Windows,
+      # e um hook que nao executa falha ABERTO na hora de registrar.
+      command: "python3 /opt/data/agent-hooks/gate-viabilidade.py"
+      timeout: 15
+      fail_closed: true
+
+
+# --------------------------------------------------------------------------- #
+# Paciencia com o modelo
+#
+# O default corta a chamada quando o stream fica 60s sem emitir evento. Isso
+# serve para detectar conexao morta — mas nao distingue "morreu" de "esta
+# pensando", e um modelo de raciocinio com 11 ferramentas e 19 mil tokens de
+# contexto passa disso com facilidade.
+#
+# Aconteceu de verdade: 107s de silencio, tres tentativas, e a resposta
+# perdida depois de o modelo ja ter comecado a produzi-la.
+#
+# 180s da margem para o raciocinio sem deixar uma conexao de fato morta
+# pendurada para sempre. O `request_timeout_seconds` e o teto duro da chamada
+# inteira, que so importa em resposta muito longa.
+# --------------------------------------------------------------------------- #
+providers:
+  openai-api:
+    stale_timeout_seconds: 180
+    request_timeout_seconds: 900

@@ -1,670 +1,814 @@
 """Servidor MCP do Sabor da Maria.
 
-    python -m mcp_server        # sobe em http://127.0.0.1:9000/mcp
+Esta e a fronteira de determinismo. O LLM nao soma e nao converte unidade:
+ele chama uma ferramenta e recebe o numero pronto.
 
-Esta e a fronteira de determinismo. O LLM nao soma e nao grava: ele chama
-uma ferramenta e recebe o resultado pronto.
-
-A regra que sustenta o desafio esta em `prato_aceitar`: ela RECUSA enquanto
-o gate apontar pendencia. Nao e instrucao de prompt — e uma funcao que
-devolve erro. O modelo nao tem como pular.
+Etapa 1 do plano — so leitura. As ferramentas de calculo, perfil e aceite
+entram nas etapas seguintes.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
-import logging
-import time
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Literal
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
-from fastmcp.server.middleware import Middleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
-from domain.precificacao import (
-    ItemCusto,
-    calcular_cmv,
-    lucro,
-    montar_cenarios,
-    preco_minimo,
-)
-from domain.viabilidade import (
-    FatoPerfil,
-    ItemDespensa,
-    ItemReceita,
-    RequisitoPerfil,
-    avaliar,
-)
+from domain.precificacao import ItemCusto
+from domain.precificacao import calcular_cmv as calcular
+from domain.precificacao import montar_cenarios, preco_minimo, preco_por_alvo
+from domain.unidades import UnidadeIncompativel, converter, normalizar
+# Importado como MODULO, nao pelos nomes: `FatoPerfil` e `ItemReceita` tambem
+# existem aqui como modelos pydantic das ferramentas, e a definicao local
+# sombreava silenciosamente o import do dominio — o erro so aparecia em
+# runtime, como "BaseModel.__init__() takes 1 positional argument".
+from domain import viabilidade as vb
 
 from . import repo
-
-_SUBIU = time.monotonic()
 
 mcp = FastMCP(
     "sabor-da-maria",
     instructions=(
         "Ferramentas da consultora de cardapio da Dona Maria. "
-        "Use-as para qualquer numero: nunca calcule CMV ou preco de cabeca. "
-        "Um prato so entra no cardapio via prato_aceitar, que recusa "
-        "enquanto prato_checar apontar pendencia."
+        "Use-as para QUALQUER numero: nunca calcule custo de cabeca e nunca "
+        "converta unidade por conta propria. O custo que estas ferramentas "
+        "devolvem ja esta normalizado por unidade de medida real."
     ),
 )
 
 
 # --------------------------------------------------------------------------- #
-# Saude
+# Modelos
 # --------------------------------------------------------------------------- #
-#  A rota /mcp so aceita POST com JSON-RPC, ou GET com Accept: text/event-stream
-#  — e a especificacao do transporte streamable-http. Health check que manda
-#  GET ou HEAD simples recebe 400 / 405, o que e correto mas enche o log de
-#  erro em requisicao legitima.
-#
-#  Este endpoint da a esses probes um lugar proprio, e serve ao healthcheck do
-#  docker-compose e ao cockpit saberem se o MCP esta vivo.
-# --------------------------------------------------------------------------- #
-@mcp.custom_route("/health", methods=["GET", "HEAD"])
-async def health(request):
-    from starlette.responses import JSONResponse
-
-    # O painel le DAQUI, por HTTP, e nao de arquivo no disco. A tentativa
-    # anterior lia o config do Hermes direto do sistema de arquivos e falhava
-    # com FileNotFoundError num arquivo que existia — o processo do painel
-    # simplesmente nao o enxergava. HTTP nao tem esse problema.
-    corpo = {
-        "status": "ok",
-        "servidor": mcp.name,
-        "no_ar_ha": round(time.monotonic() - _SUBIU),
-    }
-
-    # CADA leitura vai no seu try. Um /health que estoura 500 e pior que nao
-    # existir: ele so e consultado quando alguem ja esta desconfiado de algo,
-    # e ai some justamente a informacao que diria o que esta errado. Foi o que
-    # aconteceu — uma chamada a uma API que nao existe derrubou o endpoint
-    # inteiro, inclusive a parte que funcionava.
-    try:
-        corpo["ferramentas"] = sorted(t.name for t in await mcp.list_tools())
-    except Exception as erro:
-        corpo["ferramentas_erro"] = f"{type(erro).__name__}: {erro}"[:120]
-
-    try:
-        corpo["banco"] = "ok" if repo.despensa(limite=1) else "vazio"
-    except Exception as erro:
-        corpo |= {"status": "degradado", "banco": "indisponivel", "erro": str(erro)[:200]}
-        return JSONResponse(corpo, status_code=503)
-
-    return JSONResponse(corpo)
-
-
-# --------------------------------------------------------------------------- #
-# Sequencia
-#
-# O gate existia em UM lugar: escrito a mao dentro do prato_aceitar. As outras
-# nove ferramentas aceitavam qualquer coisa em qualquer ordem, e o agente
-# aproveitou — numa rodada real ele foi de `prato_salvar` direto para `cmv`,
-# pulou o `prato_checar` e apresentou preco de tres pratos que nunca foram
-# verificados. Deu certo por sorte: rodando o gate depois, os tres passavam.
-#
-# Cada etapa pulada assim virava um `if` novo dentro de uma ferramenta nova.
-# Aqui a regra fica DECLARADA: ferramenta que precise de pre-condicao ganha
-# uma linha nesta tabela, nao um remendo dentro de si.
-#
-# E toda resposta de prato leva `proximo_passo`. Nao e enfeite: o modelo pode
-# nao ler uma instrucao no prompt, mas SEMPRE le o resultado da ferramenta que
-# acabou de chamar. E o unico canal que ele nao pula — entao e o servidor que
-# conduz a sequencia, em vez de torcer para ele lembrar dela.
-# --------------------------------------------------------------------------- #
-EXIGE_APTO = ("cmv", "cenarios", "prato_aceitar")
-
-
-class Recusa(ToolError):
-    """O servidor disse nao, e isso e resultado previsto — nao defeito.
-
-    Herda de ToolError para a mensagem chegar ao modelo como resultado de
-    ferramenta. O `log_level` em DEBUG e o que falta: sem ele o FastMCP
-    imprime `Error calling tool 'x'` no console para uma recusa que funcionou
-    exatamente como projetado, e quem le o log aprende a ignorar a palavra
-    "Error" — ate o dia em que ela significa alguma coisa.
-
-    O rastro completo da recusa continua indo para a tabela `evento`, com
-    fase propria. O que sai do console e o alarme falso, nao a informacao.
-    """
-
-    # O FastMCPError grava `self.log_level` no __init__, entao atributo de
-    # classe nao adianta: a instancia sobrescreve com ERROR.
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args, log_level=logging.DEBUG)
-
-
-class Bloqueado(Recusa):
-    """Pre-condicao de sequencia nao satisfeita: gate, fonte, preco minimo."""
-
-
-def _exigir_apto(ferramenta: str, prato_id: int) -> dict:
-    """Roda o gate e recusa se houver pendencia. Devolve o resultado do gate."""
-    check = _checar(prato_id)
-    if not check["apto"]:
-        perguntas = "\n  - ".join(check["perguntas"]) or "(sem perguntas)"
-        raise Bloqueado(
-            f"`{ferramenta}` exige o prato aprovado no gate, e o prato {prato_id} "
-            f"tem {len(check['pendencias'])} pendencia(s).\n"
-            "Precificar antes de saber se ela consegue cozinhar e o erro que este "
-            "projeto existe para evitar.\n"
-            f"Faca estas perguntas a ela, uma por vez, grave com perfil_gravar e "
-            f"rode prato_checar de novo:\n  - {perguntas}"
-        )
-    return check
-
-
-def _proximo_passo(prato_id: int) -> str:
-    """O que o servidor espera a seguir para ESTE prato."""
-    try:
-        prato = repo.prato(prato_id)
-        if prato is None:
-            return "prato nao encontrado"
-        if prato["status"] == "aceito":
-            return "prato fechado no cardapio. Va para o proximo, ou cardapio()"
-        check = _checar(prato_id)
-        if not check["apto"]:
-            return (
-                f"prato_checar({prato_id}) tem {len(check['pendencias'])} pendencia(s): "
-                "faca as perguntas a ela, uma por vez, e grave com perfil_gravar"
-            )
-        return (
-            f"cenarios({prato_id}) para as tres opcoes de preco — e deixe a "
-            "Dona Maria escolher antes de prato_aceitar"
-        )
-    except Exception:
-        return ""
-
-
-def _com_passo(prato_id: int, dados: dict) -> dict:
-    passo = _proximo_passo(prato_id)
-    return {**dados, "proximo_passo": passo} if passo else dados
-
-
-# --------------------------------------------------------------------------- #
-# Observabilidade
-#
-# Um middleware, e nao um decorador em cada uma das nove ferramentas: assim
-# ferramenta nova ja nasce observada, sem ninguem lembrar de anotar.
-# --------------------------------------------------------------------------- #
-def _resumir(resultado: Any, limite: int = 400) -> str:
-    """Recorte legivel do que a ferramenta devolveu. Nunca levanta."""
-    try:
-        conteudo = (
-            getattr(resultado, "structured_content", None)
-            or getattr(resultado, "content", None)
-            or resultado
-        )
-        if isinstance(conteudo, list) and len(conteudo) == 1:
-            conteudo = getattr(conteudo[0], "text", conteudo[0])
-        texto = conteudo if isinstance(conteudo, str) else json.dumps(
-            conteudo, ensure_ascii=False, default=str
-        )
-    except Exception:
-        texto = "(irrepresentavel)"
-    texto = " ".join(str(texto).split())
-    return texto[:limite] + ("..." if len(texto) > limite else "")
-
-
-class Observador(Middleware):
-    """Grava toda chamada na tabela `evento`: quem, o que entrou, o que saiu.
-
-    Sem impressao no console. A tentativa de tracar cada chamada ali poluiu
-    mais do que ajudou — a informacao e a mesma que vai para a tabela, e o
-    lugar de le-la e o painel do run_services, que junta isto ao resto.
-    """
-
-    async def on_call_tool(self, context, call_next):
-        nome = getattr(context.message, "name", "?")
-        args = getattr(context.message, "arguments", None) or {}
-        repo.registrar(nome, "inicio", f"chamou {nome}", args)
-        inicio = time.monotonic()
-        try:
-            resultado = await call_next(context)
-        except BaseException as erro:
-            # BaseException, nao Exception: CancelledError nao herda de
-            # Exception, e o Hermes cancela chamada quando o turno estoura.
-            # Com o except estreito isso ficava INVISIVEL — `inicio` gravado,
-            # nenhum fim, e so contando os dois lados dava para notar.
-            if isinstance(erro, ToolError):
-                fase = "recusa"  # resultado previsto, nao defeito
-            elif isinstance(erro, asyncio.CancelledError):
-                fase = "cancelado"  # o cliente desistiu; a ferramenta estava viva
-            else:
-                fase = "erro"
-            repo.registrar(
-                nome,
-                fase,
-                f"{type(erro).__name__}: {erro}",
-                {"ms": round((time.monotonic() - inicio) * 1000)},
-            )
-            raise
-        repo.registrar(nome, "fim", f"{nome} respondeu", {
-            "ms": round((time.monotonic() - inicio) * 1000),
-            "resposta": _resumir(resultado),
-        })
-        return resultado
-
-
-mcp.add_middleware(Observador())
-
-
-# --------------------------------------------------------------------------- #
-# Despensa
-# --------------------------------------------------------------------------- #
-@mcp.tool
-def despensa(
-    ingrediente: str = "",
-    ordenar_por: str = "nome",
-    limite: int = 0,
-) -> list[dict]:
-    """Consulta a despensa: o que tem, quanto sobra e quanto custa a unidade.
-
-    FILTRE. Chamar sem argumento devolve os 37 ingredientes, e ler a despensa
-    inteira para responder sobre um item custa tempo em toda rodada.
-
-        despensa(ingrediente="bacon")               -> so o bacon
-        despensa(ordenar_por="custo", limite=3)     -> os 3 mais caros
-        despensa(ordenar_por="disponivel")          -> o que tem mais sobrando
-        despensa()                                  -> tudo (use so quando precisar)
-
-    ingrediente  busca parcial, ignora acento e maiuscula ("feijao" acha
-                 "Feijão preto")
-    ordenar_por  'nome' | 'custo' | 'disponivel'
-    limite       0 = sem limite
-
-    `disponivel` ja desconta o que os pratos aceitos comprometeram.
-    `custo_unitario` e por `unidade_base` (kg, L ou un) — ja normalizado,
-    entao alcaparra sai a R$ 41,00/kg e nao a R$ 82,00 pelo balde.
-    """
-    return repo.json_seguro(
-        repo.despensa(
-            ingrediente=ingrediente or None,
-            ordenar_por=ordenar_por,
-            limite=limite or None,
-        )
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Elicitacao
-# --------------------------------------------------------------------------- #
-@mcp.tool
-def perfil_ler() -> list[dict]:
-    """O que ja se sabe da Dona Maria: utensilios, tecnicas e restricoes."""
-    return repo.json_seguro(repo.perfil())
-
-
-@mcp.tool
-def perfil_gravar(categoria: str, item: str, resposta: str) -> dict:
-    """Registra uma resposta dela.
-
-    categoria: 'utensilio', 'tecnica' ou 'restricao'
-    item:      'panela de pressao', 'massa fresca', 'espaco na geladeira'
-    resposta:  'sim', 'nao tem', ou o detalhe que ela deu ('so 2 bocas')
-    """
-    if categoria not in ("utensilio", "tecnica", "restricao"):
-        raise ValueError("categoria deve ser utensilio, tecnica ou restricao")
-    return repo.json_seguro(repo.perfil_gravar(categoria, item, resposta))
-
-
-@mcp.tool
-def perfil_pendente() -> list[dict]:
-    """O que os pratos exigem e ela ainda nao respondeu.
-
-    Esta e a agenda de elicitacao: nao pergunta nada, devolve o que FALTA
-    perguntar. Consulte antes de conversar para nao repetir pergunta ja feita.
-
-    Cada item vem com `como_gravar`: a chamada pronta para registrar a
-    resposta dela. Devolver so o dado nao bastou — numa rodada real o agente
-    leu a pendencia da panela de pressao, escreveu "agora que sabemos que ela
-    tem panela de pressao" e seguiu sem gravar nada. Entregar a chamada e o
-    mesmo remedio que o `prato_checar` usa ao devolver a pergunta pronta.
-    """
-    pendentes = repo.perfil_pendente()
-    for p in pendentes:
-        p["como_gravar"] = (
-            f"perfil_gravar(categoria=\"{p['categoria']}\", item=\"{p['item']}\", "
-            "resposta=<o que ela respondeu>)"
-        )
-    return repo.json_seguro(pendentes)
-
-
-@mcp.tool
-def ingrediente_preco(
-    ingrediente: str, preco_pago: float, quantidade: float, unidade: str
-) -> dict:
-    """Grava quanto a Dona Maria paga por um ingrediente.
-
-    Use quando o gate pedir o preco de algo que falta. Registre EXATAMENTE o
-    que ela disse — o preco que ela pagou, pela quantidade que ela comprou, na
-    embalagem que ela comprou:
-
-        "R$ 24 o quilo"          -> preco_pago=24, quantidade=1, unidade="kg"
-        "R$ 12 o pacote de 500g" -> preco_pago=12, quantidade=1, unidade="pacote 500g"
-        "R$ 82 o balde de 2kg"   -> preco_pago=82, quantidade=1, unidade="balde 2kg"
-
-    NAO divida na cabeca para "converter para o quilo". O servidor faz isso, e
-    devolve `custo_unitario` ja normalizado — R$ 41,00/kg no caso do balde.
-    Fazer essa conta de cabeca e o erro que este projeto existe para evitar.
-    """
-    try:
-        r = repo.ingrediente_preco(
-            ingrediente, Decimal(str(preco_pago)), Decimal(str(quantidade)), unidade
-        )
-    except ValueError as recusa:
-        raise Recusa(str(recusa)) from None
-    return repo.json_seguro(r)
-
-
-# --------------------------------------------------------------------------- #
-# Cardapio
-# --------------------------------------------------------------------------- #
-# `list[dict]` publica o schema `{"type": "array", "items": {"type": "object"}}`:
-# um objeto sem propriedade nenhuma. O modelo entao adivinha o nome da chave
-# pela frase do prompt, e ja mandou `"quantidade em kg por porcao"` como nome
-# de campo. Declarar o tipo poe os nomes e as descricoes no schema, que e onde
-# o modelo procura.
-#
-# `extra="allow"` de proposito: o schema ORIENTA, nao barra. O que escapar
-# chega inteiro no `normalizar_itens` do repo, que tolera as grafias e, quando
-# nao da, devolve um erro que ensina o formato. Barrar aqui trocaria essa
-# mensagem por um traceback de validacao.
 class Ingrediente(BaseModel):
-    """Um ingrediente da receita, na quantidade de UMA porcao."""
+    """Um item da despensa com o custo ja normalizado.
 
-    model_config = ConfigDict(extra="allow")
+    `custo_unitario` e sempre por `unidade_base` — R$/kg, R$/L ou R$/un. Nunca
+    por embalagem. A alcaparra sai a R$ 41,00/kg, e nao a R$ 82,00/balde.
+    """
 
-    ingrediente: str | None = Field(
-        None, description="nome do ingrediente, como na receita — ex: 'Feijao preto'"
+    nome: str
+    # Os tres campos sao nomeados sem ambiguidade de proposito. O campo se
+    # chamava `estoque` e significava DISPONIVEL: o agente leu o nome, tratou
+    # como total, e subtraiu o comprometido de novo — reportou "600 ml, 400
+    # disponiveis" com 800 e 600 no banco. Descricao nao corrige nome errado.
+    total: float = Field(description="Tudo que existe: planilha + compras")
+    comprometido: float = Field(description="Reservado por pratos ja aceitos")
+    disponivel: float = Field(
+        description="total - comprometido. E ESTE que cabe num prato novo"
     )
-    quantidade: float | None = Field(
-        None,
-        description="quantidade de uma porcao em kg, L ou un — numero decimal, ex: 0.12",
+    unidade_base: Literal["kg", "L", "un"]
+    custo_unitario: float = Field(description="R$ por unidade_base")
+    medida: Literal["massa", "volume", "contagem"]
+    unidade_planilha: str = Field(
+        description="Texto cru da planilha, para conferencia: 'kg', 'balde 2kg', 'un 500ml'"
+    )
+    aviso: str | None = Field(
+        default=None,
+        description="Preenchido quando o item nao pode responder pergunta em gramas",
     )
 
 
-class Requisito(BaseModel):
-    """O que a receita exige da cozinha da Dona Maria. Alimenta o gate."""
+_MEDIDA = {"kg": "massa", "L": "volume", "un": "contagem"}
 
-    model_config = ConfigDict(extra="allow")
+_AVISO_CONTAGEM = (
+    "Vendido por unidade, nao por peso. A planilha nao diz quanto pesa uma "
+    "unidade, entao NAO ha como responder 'quanto custam 80 g disto'. Se a "
+    "receita pedir em gramas, pergunte a Dona Maria quanto pesa a embalagem "
+    "antes de calcular qualquer coisa."
+)
 
-    categoria: Literal["utensilio", "tecnica", "restricao"] | None = Field(
-        None, description="utensilio, tecnica ou restricao"
+
+def _converter(linha: dict) -> Ingrediente:
+    base = linha["unidade_base"]
+    return Ingrediente(
+        nome=linha["ingrediente"],
+        total=float(linha.get("estoque_total") or 0),
+        comprometido=float(linha.get("comprometido") or 0),
+        disponivel=float(linha["estoque"] or 0),
+        unidade_base=base,
+        custo_unitario=float(linha["custo_unitario"] or 0),
+        medida=_MEDIDA[base],
+        unidade_planilha=linha["unidade_planilha"],
+        aviso=_AVISO_CONTAGEM if base == "un" else None,
     )
-    item: str | None = Field(
-        None,
-        description="so o objeto, sem repetir a categoria — 'panela de pressao'",
+
+
+# --------------------------------------------------------------------------- #
+# Ferramentas
+# --------------------------------------------------------------------------- #
+@mcp.tool
+def consultar_despensa(ingrediente: str | None = None) -> list[Ingrediente]:
+    """Consulta o que a Dona Maria tem e quanto custa cada item.
+
+    Use SEMPRE que precisar de custo de ingrediente. O `custo_unitario` que
+    volta ja esta na unidade de medida real — multiplique pela quantidade da
+    receita e pronto, sem nenhuma conversao adicional.
+
+    Sao TRES quantidades e elas nao se somam nem se subtraem entre si: use
+    `disponivel` para saber o que cabe num prato novo, e `total` quando ela
+    perguntar quanto tem. Subtrair o comprometido do disponivel conta o mesmo
+    consumo duas vezes.
+
+    Um item com `medida: "contagem"` e contado, nao pesado: uma receita que
+    peca gramas dele nao tem resposta na planilha. O campo `aviso` explica.
+
+    Args:
+        ingrediente: filtro por parte do nome, sem precisar de acento
+            ("feijao" acha "Feijao carioquinha"). Omita para trazer tudo.
+    """
+    return [_converter(linha) for linha in repo.despensa(ingrediente)]
+
+
+class ItemReceita(BaseModel):
+    """Um ingrediente como a receita pede — na unidade da receita, nao da despensa."""
+
+    ingrediente: str = Field(description="Nome, sem precisar de acento nem grafia exata")
+    quantidade: float
+    unidade: Literal["g", "kg", "ml", "L", "un"] = Field(
+        description="A unidade da RECEITA. A conversao para a unidade da despensa e feita aqui."
+    )
+    custo_compra: float | None = Field(
+        default=None,
+        description=(
+            "SO para ingrediente que NAO esta na despensa: quantos reais custa "
+            "comprar esta quantidade. Pesquise o preco antes de propor — sem "
+            "ele o orcamento de R$ 80 nao desce e a Dona Maria acha que tem "
+            "dinheiro que ja gastou."
+        ),
+    )
+
+
+class LinhaCusto(BaseModel):
+    ingrediente: str
+    usa: str = Field(description="Quantidade e unidade como a receita pediu")
+    custo_unitario: str = Field(description="R$ por unidade base da despensa")
+    custo: float = Field(description="R$ deste ingrediente no prato")
+
+
+class ResultadoCMV(BaseModel):
+    cmv: float = Field(description="Custo da RECEITA INTEIRA, somando todos os ingredientes")
+    porcoes: int
+    cmv_porcao: float = Field(description="cmv / porcoes — E ESTE que entra no preco")
+    linhas: list[LinhaCusto]
+    preco_minimo: float = Field(
+        description="Por PORCAO. Abaixo disto a Dona Maria paga para trabalhar"
+    )
+    completo: bool = Field(description="False = o CMV esta SUBESTIMADO, ha pendencia abaixo")
+    nao_encontrados: list[str] = Field(default_factory=list)
+    sem_conversao: list[str] = Field(
+        default_factory=list,
+        description="Receita pediu em peso um item vendido por unidade. PERGUNTE o peso da embalagem.",
     )
 
 
 @mcp.tool
-def prato_salvar(
-    nome: str,
-    ingredientes: list[Ingrediente],
-    fonte: str = "",
-    requisitos: list[Requisito] | None = None,
-) -> dict:
-    """Guarda uma receita candidata.
+def calcular_cmv(ingredientes: list[ItemReceita], porcoes: int = 1) -> ResultadoCMV:
+    """Calcula o CMV de um prato e o preco minimo para nao dar prejuizo.
 
-    Chame UMA VEZ, com a lista completa: a gravacao SUBSTITUI os ingredientes
-    do prato. Duas chamadas nao somam — a segunda apaga a primeira.
+    Use SEMPRE esta ferramenta para somar custo de prato. Nunca some de
+    cabeca, nunca use o terminal e NUNCA divida por porcao por fora: aqui a
+    conversao de unidade, o arredondamento, a divisao por porcao e a taxa da
+    plataforma seguem uma regra so, e o resultado vem com a memoria de
+    calculo item a item para voce mostrar a ela.
 
-    ingredientes: [{"ingrediente": "Feijao preto", "quantidade": 0.12}]
-                  quantidade sempre na unidade_base da despensa (kg, L, un)
-    requisitos:   [{"categoria": "utensilio", "item": "panela de pressao"}]
-                  o que a receita exige da cozinha — alimenta o gate
+    Quem se vende no delivery e a PORCAO, nao a panela. Use `cmv_porcao` e
+    `preco_minimo` para falar de preco; `cmv` e o custo da receita inteira e
+    so serve para conferencia.
 
-    Ingrediente que a despensa nao tem NAO e descartado: entra como item de
-    estoque zero e custo desconhecido, e volta em `fora_da_despensa`. O
-    prato_checar vai cobrar o preco dele antes de deixar o prato passar.
-    Confira `total_ingredientes` contra a receita que voce leu.
+    Quando `completo` for False o total esta SUBESTIMADO — nao apresente o
+    numero como se fosse final. `sem_conversao` lista o que virou pergunta.
+
+    Args:
+        ingredientes: o que a receita pede, na unidade da receita.
+        porcoes: quantas porcoes a receita rende. Se nao souber, PERGUNTE —
+            um CMV de receita inteira apresentado como preco de porcao
+            multiplicaria o preco pelo rendimento.
     """
-    try:
-        r = repo.prato_salvar(
-            nome,
-            fonte or None,
-            [i.model_dump() for i in ingredientes],
-            [q.model_dump() for q in requisitos or []],
-        )
-    except ValueError as recusa:
-        raise Recusa(str(recusa)) from None
-    return repo.json_seguro(_com_passo(r["id"], r))
+    linhas: list[LinhaCusto] = []
+    itens: list[ItemCusto] = []
+    nao_encontrados: list[str] = []
+    sem_conversao: list[str] = []
+
+    for pedido in ingredientes:
+        achados = repo.despensa(pedido.ingrediente)
+        if not achados:
+            nao_encontrados.append(pedido.ingrediente)
+            continue
+
+        # O primeiro resultado e o mais curto: "sal" nao pode casar em
+        # "caldo de carne (tempero)" so por ordem alfabetica.
+        linha = min(achados, key=lambda a: len(a["ingrediente"]))
+        base = linha["unidade_base"]
+        try:
+            quantidade = converter(Decimal(str(pedido.quantidade)), pedido.unidade, base)
+        except UnidadeIncompativel:
+            # Nao e erro de programa: e o gatilho da elicitacao. A receita
+            # pede grama de um item que a despensa so sabe contar.
+            sem_conversao.append(
+                f"{linha['ingrediente']}: a receita pede em {pedido.unidade}, mas a "
+                f"despensa so sabe '{base}' ({linha['unidade_planilha']}). "
+                f"Pergunte a Dona Maria quanto pesa uma unidade."
+            )
+            continue
+
+        custo_unitario = Decimal(str(linha["custo_unitario"]))
+        itens.append(ItemCusto(linha["ingrediente"], quantidade, custo_unitario, base))
+        linhas.append(LinhaCusto(
+            ingrediente=linha["ingrediente"],
+            usa=f"{pedido.quantidade:g} {pedido.unidade}",
+            custo_unitario=f"R$ {custo_unitario:.2f}/{base}",
+            custo=float(quantidade * custo_unitario),
+        ))
+
+    resultado = calcular(itens)
+    # A divisao acontece aqui e nao no agente: e a mesma regra de
+    # arredondamento do resto, e um `execute_code` dividindo por fora fica
+    # fora da auditoria e pode usar outro rendimento que o gravado no prato.
+    por_porcao = (resultado.total / max(1, porcoes)).quantize(Decimal("0.01"))
+    return ResultadoCMV(
+        cmv=float(resultado.total),
+        porcoes=max(1, porcoes),
+        cmv_porcao=float(por_porcao),
+        linhas=linhas,
+        preco_minimo=float(preco_minimo(por_porcao)),
+        completo=not (nao_encontrados or sem_conversao),
+        nao_encontrados=nao_encontrados,
+        sem_conversao=sem_conversao,
+    )
+
+
+class CenarioPreco(BaseModel):
+    rotulo: str
+    preco: float = Field(description="O que o cliente paga")
+    taxa: float = Field(description="10% que fica com a plataforma")
+    recebe: float = Field(description="O que chega na Dona Maria: 0,90 x preco")
+    lucro: float = Field(description="recebe - CMV")
+    comida_pct: float = Field(description="Quanto do preco e ingrediente")
+    margem_pct: float = Field(description="Quanto do preco sobra para ela")
 
 
 @mcp.tool
-def prato_checar(prato_id: int) -> dict:
-    """O gate: da para a Dona Maria fazer este prato hoje?
+def cenarios_preco(cmv: float, alvos_comida: list[float] | None = None) -> dict:
+    """Monta cenarios de preco a partir do CMV, com a conta aberta.
 
-    Devolve `apto` e, quando falso, a lista de pendencias — cada uma ja com
-    a PERGUNTA pronta. Quatro coisas travam um prato: utensilio/tecnica nao
-    confirmado, unidade que nao da para converter, ingrediente em falta sem
-    preco, e compras que estouram o orcamento.
+    APRESENTE OS CENARIOS ASSIM QUE TIVER O CMV. Nao espere levantar custo de
+    embalagem, gas ou mao de obra: eles nao entram nesta conta e nao sao
+    pre-requisito dela. Mostre os precos e diga, em uma linha, que a margem
+    cobre comida e taxa mas ainda vai pagar essas outras coisas — o campo
+    `cobertura` traz o texto pronto. Travar a resposta por causa de um custo
+    que a conta nem usa deixa a Dona Maria sem o numero que ela pediu.
+
+    Apresente os cenarios e DEIXE A DONA MARIA ESCOLHER. Voce pode dizer qual
+    acha melhor e por que — nunca escolher por ela.
+
+    A leitura que ela entende sem formula: o preco e uma pizza de 100%. A
+    plataforma leva 10%, a comida leva `comida_pct`, e `margem_pct` fica com
+    ela. As tres somam 100.
+
+    Args:
+        cmv: o `cmv_porcao` de `calcular_cmv` — o custo de UMA porcao.
+            Passar o CMV da receita inteira aqui produziria precos varias
+            vezes maiores que o correto.
+        alvos_comida: fracoes do preco que a comida deve representar.
+            Padrao [0.35, 0.30, 0.25] — quanto menor, mais caro o prato.
     """
-    resultado = _checar(prato_id)
-    # Cada pendencia leva a chamada que a resolve. Devolver so a pergunta ja
-    # provou nao bastar: o agente leu a pendencia da panela de pressao, disse
-    # "agora que sabemos que ela tem" e seguiu sem gravar nada.
-    # A pendencia serializada usa `item`, nao `chave` — o nome do campo muda na
-    # fronteira. Escrevi `chave` aqui e o KeyError derrubava TODA chamada de
-    # prato_checar, transformando o gate inteiro em erro. Passou despercebido
-    # porque o agente perguntava a coisa certa mesmo assim: ele lia a recusa,
-    # que continha a pergunta, e seguia. O rastro so denunciou quando a fase
-    # `recusa` passou a ser gravavel.
-    for p in resultado.get("pendencias", []):
-        alvo = p.get("item", "")
-        if p["tipo"] == "estoque":
-            p["como_gravar"] = (
-                f'ingrediente_preco(ingrediente="{alvo}", preco_pago=<R$>, '
-                'quantidade=<quanto ela compra>, unidade="<embalagem, ex: kg ou pacote 500g>")'
-            )
-        elif p["tipo"] in ("utensilio", "tecnica", "restricao"):
-            p["como_gravar"] = (
-                f'perfil_gravar(categoria="{p["tipo"]}", item="{alvo}", '
-                "resposta=<o que ela respondeu>)"
-            )
-    return repo.json_seguro(_com_passo(prato_id, resultado))
+    valor = Decimal(str(cmv))
+    alvos = [Decimal(str(a)) for a in (alvos_comida or [0.35, 0.30, 0.25])]
 
+    precos = [(f"comida em {a * 100:.0f}% do preco", preco_por_alvo(valor, a)) for a in alvos]
+    cenarios = montar_cenarios(valor, precos)
 
-def _checar(prato_id: int) -> dict:
-    prato = repo.prato(prato_id)
-    if prato is None:
-        raise ValueError(f"prato {prato_id} nao encontrado")
-
-    itens = repo.prato_ingredientes(prato_id)
-    receita = [
-        ItemReceita(i["ingrediente"], Decimal(str(i["quantidade"])), i["unidade_base"] or "un")
-        for i in itens
-    ]
-    estoque = [
-        ItemDespensa(
-            i["ingrediente"],
-            i["unidade_base"],
-            Decimal(str(i["disponivel"])),
-            Decimal(str(i["custo_unitario"])) if i["custo_unitario"] is not None else None,
-        )
-        for i in itens
-    ]
-    requisitos = [
-        RequisitoPerfil(r.get("categoria", "utensilio"), r["item"])
-        for r in (prato.get("requisitos") or [])
-    ]
-    perfil = [
-        FatoPerfil(f["categoria"], f["item"], f["resposta"], f["status"])
-        for f in repo.perfil()
-    ]
-    restante = Decimal(str(repo.orcamento()["restante"]))
-
-    v = avaliar(receita, estoque, requisitos, perfil, restante)
     return {
-        "prato": prato["nome"],
-        "apto": v.apto,
-        "pendencias": [
-            {"tipo": p.tipo, "item": p.chave, "pergunta": p.pergunta, "detalhe": p.detalhe}
-            for p in v.pendencias
+        "cmv": float(valor),
+        "preco_minimo": float(preco_minimo(valor)),
+        "taxa_plataforma": "10% sobre a venda",
+        # Vai no retorno, e nao so no docstring, porque e o que o agente deve
+        # REPETIR a ela. Premissa que fica implicita vira margem otimista: ela
+        # olha 60% e acha que sao 60% no bolso.
+        "cobertura": (
+            "Estes numeros cobrem ingredientes e a taxa da plataforma. Nao "
+            "incluem embalagem, gas, energia nem o pagamento pelo trabalho "
+            "dela — a margem mostrada ainda vai pagar essas coisas."
+        ),
+        "cenarios": [
+            CenarioPreco(
+                rotulo=c.rotulo, preco=float(c.preco), taxa=float(c.taxa),
+                recebe=float(c.recebe), lucro=float(c.lucro),
+                comida_pct=float(c.cmv_pct), margem_pct=float(c.margem),
+            ).model_dump()
+            for c in cenarios
         ],
-        "perguntas": list(v.perguntas()),
-        "compras": [
-            {
-                "ingrediente": c.ingrediente,
-                "quantidade": c.quantidade,
-                "unidade": c.unidade_base,
-                "custo": c.custo,
-            }
-            for c in v.compras
-        ],
-        "custo_compras": v.custo_compras,
-        "orcamento_restante": restante,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Perfil da cozinha
+# --------------------------------------------------------------------------- #
+Categoria = Literal["utensilio", "tecnica", "restricao", "preferencia"]
+
+
+class FatoPerfil(BaseModel):
+    """Uma coisa que a Dona Maria contou sobre a cozinha dela."""
+
+    categoria: Categoria = Field(
+        description=(
+            "utensilio: equipamento da cozinha — fogao, forno, panela de pressao, "
+            "air fryer, liquidificador, batedeira. "
+            "tecnica: habilidade que ela domina ou nao — massa fresca, bechamel, "
+            "ponto de carne, temperagem de chocolate. "
+            "restricao: limite operacional — gas, energia, espaco na geladeira, "
+            "tempo por cozinhada, quantas marmitas por vez. "
+            "preferencia: o que ela gosta ou nao gosta de COZINHAR."
+        )
+    )
+    item: str = Field(
+        description=(
+            "O assunto em duas ou tres palavras, no singular e generico: 'forno', "
+            "'panela de pressao', 'bechamel'. Nunca amarre ao prato da vez — "
+            "'forno' serve para todo prato que precisa de forno; "
+            "'forno do bolo de chocolate' nao serve para nenhum."
+        )
+    )
+    resposta: str | None = Field(
+        default=None,
+        description=(
+            "O que ela disse, nas palavras dela: 'tem', 'nao tem', 'so 2 bocas'. "
+            "Deixe vazio para registrar uma pergunta que voce fez e ela ainda nao respondeu."
+        ),
+    )
+
+
+@mcp.tool
+def registrar_perfil(fatos: list[FatoPerfil]) -> dict:
+    """Grava o que a Dona Maria contou sobre a COZINHA dela.
+
+    CHAME ASSIM QUE ELA CONTAR, na mesma resposta. A conversa nao guarda
+    nada: quando a sessao termina, some tudo o que ela disse e voce vai
+    perguntar de novo o que ela ja respondeu.
+
+    O QUE VAI AQUI: so o que decide se ela CONSEGUE PRODUZIR um prato —
+    equipamento, habilidade e limite operacional. Nada mais.
+
+    O QUE NAO VAI, e onde cada coisa mora:
+
+        receita, ingredientes, rendimento  ->  propor_prato
+        preco escolhido por ela            ->  aceitar_prato
+        custo de ingrediente               ->  ja esta na despensa
+        o que ela pediu na conversa        ->  lugar nenhum, e contexto
+
+    Gravar receita ou preco aqui polui o perfil e ENFRAQUECE O GATE: ele casa
+    o requisito do prato ("forno") contra os fatos gravados, e quanto mais
+    entulho, mais dificil o casamento. Uma linha "receita de bolo de
+    chocolate" nao responde nenhuma pergunta sobre a cozinha dela.
+
+    Uma frase costuma trazer varios fatos — "tenho fogao de 4 bocas e forno,
+    mas nao tenho panela de pressao" sao tres. Mande os tres juntos.
+
+    Registre tambem a PERGUNTA que voce acabou de fazer, com `resposta` vazia:
+    isso marca o que ainda falta descobrir, e e o que impede de perguntar duas
+    vezes a mesma coisa.
+    """
+    gravados = repo.perfil_gravar([f.model_dump() for f in fatos])
+    return {
+        "gravados": len(gravados),
+        "fatos": gravados,
     }
 
 
 @mcp.tool
-def prato_aceitar(prato_id: int, preco: float) -> dict:
-    """Fecha o prato no cardapio ao preco escolhido pela Dona Maria.
+def consultar_perfil(categoria: Categoria | None = None) -> dict:
+    """O que ja se sabe sobre a cozinha da Dona Maria, e o que ainda falta.
 
-    RECUSA se prato_checar apontar qualquer pendencia — a validacao roda
-    aqui no servidor, nao no prompt. Tambem recusa preco abaixo do minimo,
-    que daria prejuizo depois da taxa de 10%.
+    CONSULTE ANTES de perguntar qualquer coisa sobre equipamento, tecnica ou
+    limite de producao — ela pode ja ter respondido numa conversa anterior, e
+    repetir a pergunta passa a impressao de que ninguem anotou.
+
+    Consulte tambem antes de sugerir um prato: uma receita que pede forno nao
+    serve para quem nao tem forno, e descobrir isso depois de ela comprar
+    ingrediente e exatamente o que nao pode acontecer.
+
+    `pendentes` lista o que foi perguntado e continua sem resposta.
     """
-    check = _checar(prato_id)
-    if not check["apto"]:
-        return repo.json_seguro(
-            {
-                "aceito": False,
-                "motivo": "o prato ainda tem pendencia",
-                "pendencias": check["pendencias"],
-                "perguntas": check["perguntas"],
-            }
-        )
-
-    detalhe = _cmv(prato_id)
-    total = Decimal(str(detalhe["cmv"]))
-    minimo = preco_minimo(total)
-    escolhido = Decimal(str(preco))
-
-    if escolhido < minimo:
-        return repo.json_seguro(
-            {
-                "aceito": False,
-                "motivo": f"R$ {escolhido:.2f} fica abaixo do minimo de R$ {minimo:.2f}",
-                "cmv": total,
-                "preco_minimo": minimo,
-            }
-        )
-
-    linha = repo.prato_aceitar(prato_id, escolhido, total, check["compras"])
-    return repo.json_seguro(
-        {
-            "aceito": True,
-            "prato": linha["nome"],
-            "cmv": total,
-            "preco": escolhido,
-            "lucro": lucro(escolhido, total),
-        }
-    )
-
-
-@mcp.tool
-def cardapio(apenas_aceitos: bool = False) -> list[dict]:
-    """Todos os pratos e o estado de cada um.
-
-    Por padrao inclui os `sugerido` — os que ja foram salvos e ainda nao
-    passaram no gate ou nao tiveram preco escolhido. Lista vazia aqui
-    significa que NENHUM prato foi salvo ainda, e nao que o cardapio esta
-    fechado sem itens.
-
-    `apenas_aceitos=True` devolve so o que ja esta fechado no cardapio.
-    """
-    return repo.json_seguro(repo.cardapio(apenas_aceitos))
+    linhas = repo.perfil_listar(categoria)
+    confirmados = [l for l in linhas if l["status"] == "confirmado"]
+    pendentes = [l for l in linhas if l["status"] == "pendente"]
+    return {
+        "sabido": [
+            {"categoria": l["categoria"], "item": l["item"], "resposta": l["resposta"]}
+            for l in confirmados
+        ],
+        "pendentes": [{"categoria": l["categoria"], "item": l["item"]} for l in pendentes],
+        "vazio": not linhas,
+    }
 
 
 # --------------------------------------------------------------------------- #
-# Dinheiro
+# Pratos e o gate
 # --------------------------------------------------------------------------- #
-def _cmv(prato_id: int) -> dict:
-    itens = repo.prato_ingredientes(prato_id)
-    r = calcular_cmv(
-        ItemCusto(
+class Requisito(BaseModel):
+    """O que a receita exige da cozinha ou da cozinheira."""
+
+    categoria: Literal["utensilio", "tecnica", "restricao"]
+    item: str = Field(description="Curto e no singular: 'forno', 'panela de pressao', 'bechamel'")
+
+
+def _avaliar(prato: dict):
+    """Roda o gate contra o estado do banco. Uma fonte so para tool e hook."""
+    despensa_atual = {d["ingrediente"]: d for d in repo.estoque()}
+
+    # Item a comprar COM preco pesquisado entra na despensa como disponivel
+    # zero e custo conhecido. Assim o `avaliar` o trata como compra — calcula
+    # quanto sai do orcamento — em vez de barrar com "nao esta na despensa".
+    #
+    # Sem preco ele NAO entra, e continua barrando: e a pendencia certa, e a
+    # pergunta que o proprio dominio ja escreve e melhor que a nossa.
+    #
+    # A unidade aqui e nominal. Para item fora da planilha nao ha unidade base
+    # de verdade; o que importa e que `quantidade x custo_unitario` reproduza
+    # exatamente o custo informado, e com os dois lados em 'un' isso vale.
+    compraveis = {}
+    for item in prato["itens"]:
+        if item["comprar"] and item.get("custo_compra") is not None:
+            quantidade = Decimal(str(item["quantidade"]))
+            compraveis[item["ingrediente"]] = vb.ItemDespensa(
+                nome=item["ingrediente"],
+                unidade_base=item.get("unidade_base") or "un",
+                disponivel=Decimal("0"),
+                custo_unitario=Decimal(str(item["custo_compra"])) / quantidade,
+            )
+
+    # A quantidade ja foi convertida para a unidade base la na proposta, entao
+    # aqui a unidade da "receita" E a unidade base — nao ha o que reconverter,
+    # e declarar a mesma dos dois lados faz a conversao virar identidade.
+    receita = [
+        vb.ItemReceita(
             i["ingrediente"],
             Decimal(str(i["quantidade"])),
-            Decimal(str(i["custo_unitario"])) if i["custo_unitario"] is not None else None,
-            i["unidade_base"] or "",
+            (i.get("unidade_base") or "un") if i["ingrediente"] in compraveis
+            else (despensa_atual.get(i["ingrediente"], {}).get("unidade_base") or "un"),
         )
-        for i in itens
+        for i in prato["itens"]
+    ]
+
+    return vb.avaliar(
+        receita=receita,
+        despensa=[
+            vb.ItemDespensa(d["ingrediente"], d["unidade_base"],
+                            Decimal(str(d["disponivel"] or 0)),
+                            Decimal(str(d["custo_unitario"])) if d["custo_unitario"] else None)
+            for d in despensa_atual.values()
+        ] + list(compraveis.values()),
+        requisitos=[vb.RequisitoPerfil(r["categoria"], r["item"]) for r in prato["requisitos"]],
+        perfil=[vb.FatoPerfil(f["categoria"], f["item"], f["resposta"], f["status"])
+                for f in repo.perfil_listar()],
+        orcamento_restante=Decimal(str(repo.orcamento()["restante"])),
     )
+
+
+@mcp.tool
+def propor_prato(nome: str, ingredientes: list[ItemReceita],
+                 requisitos: list[Requisito], porcoes: int = 1,
+                 fonte: str | None = None) -> dict:
+    """Registra um prato candidato, com o que ele exige da cozinha.
+
+    CHAME ANTES de comentar a receita com a Dona Maria. Os `requisitos` ficam
+    gravados aqui e o gate os le do banco no momento do aceite — nao do que
+    voce mandar depois. Uma lista de requisitos incompleta agora vira um prato
+    aprovado sem checagem la na frente.
+
+    Liste tudo que a receita exige mesmo que voce ache que ela tem: forno,
+    panela de pressao, liquidificador, batedeira, tecnicas como massa fresca
+    ou bechamel, e restricoes como tempo longo de cozimento.
+
+    Args:
+        nome: nome do prato, unico. Repropor o mesmo nome atualiza.
+        ingredientes: o que a receita pede, na unidade da receita.
+        requisitos: o que a cozinha precisa ter. Vazio so se nao exigir nada.
+        porcoes: quantas porcoes a receita rende.
+        fonte: URL da receita, quando veio da web.
+    """
+    itens: list[dict] = []
+    sem_conversao: list[str] = []
+
+    for pedido in ingredientes:
+        achados = repo.despensa(pedido.ingrediente)
+        if not achados:
+            # Nao esta na despensa: entra como compra, na unidade da receita.
+            # Normaliza mesmo fora da despensa: 200 ml viram 0,2 L. Sem isso a
+            # quantidade entrava crua e a view somava numeros de unidades
+            # diferentes no mesmo campo.
+            base, fator = normalizar(pedido.unidade)
+            itens.append({
+                "ingrediente": pedido.ingrediente,
+                "quantidade": Decimal(str(pedido.quantidade)) * (fator or Decimal("1")),
+                "unidade_base": base or "un",
+                "comprar": True,
+                "custo_compra": (Decimal(str(pedido.custo_compra))
+                                 if pedido.custo_compra is not None else None),
+            })
+            continue
+        linha = min(achados, key=lambda a: len(a["ingrediente"]))
+        base = linha["unidade_base"]
+        try:
+            quantidade = converter(Decimal(str(pedido.quantidade)), pedido.unidade, base)
+        except UnidadeIncompativel:
+            sem_conversao.append(
+                f"{linha['ingrediente']}: receita em {pedido.unidade}, despensa em "
+                f"'{base}'. Pergunte quanto pesa uma unidade antes de propor."
+            )
+            continue
+        itens.append({"ingrediente": linha["ingrediente"], "quantidade": quantidade,
+                      "unidade_base": base, "comprar": False, "custo_compra": None})
+
+    prato = repo.prato_propor(nome, fonte, porcoes,
+                              [r.model_dump() for r in requisitos], itens)
+    viab = _avaliar(repo.prato_carregar(prato["id"]))
     return {
-        "cmv": r.total,
-        "completo": r.completo,
-        "sem_custo": list(r.sem_custo),
-        "linhas": [
-            {
-                "ingrediente": l.ingrediente,
-                "quantidade": l.quantidade,
-                "unidade": l.unidade_base,
-                "custo_unitario": l.custo_unitario,
-                "custo": l.custo,
-            }
-            for l in r.linhas
-        ],
+        "prato_id": prato["id"],
+        "nome": prato["nome"],
+        "status": prato["status"],
+        "apto": viab.apto,
+        "pendencias": [{"tipo": p.tipo, "pergunta": p.pergunta} for p in viab.pendencias],
+        "sem_conversao": sem_conversao,
+        "comprar": [{"ingrediente": c.ingrediente, "quantidade": float(c.quantidade),
+                     "unidade": c.unidade_base, "custo": float(c.custo)} for c in viab.compras],
+        "custo_compras": float(viab.custo_compras),
     }
 
 
 @mcp.tool
-def cmv(prato_id: int) -> dict:
-    """CMV do prato, aberto por ingrediente.
+def checar_prato(prato_id: int) -> dict:
+    """Diz se um prato ja pode ser aceito, e o que falta se nao puder.
 
-    EXIGE o prato aprovado no gate: nao se precifica o que ainda nao se sabe
-    se da para cozinhar.
+    Use isto para saber o que perguntar. Cada pendencia vem com a pergunta
+    pronta — nao invente a sua.
 
-    `completo=False` significa que algum ingrediente nao tem custo conhecido
-    e o total esta SUBESTIMADO — veja `sem_custo` e pergunte a ela.
+    O aceite roda a MESMA checagem e recusa enquanto houver pendencia, entao
+    tentar aceitar sem passar por aqui nao adianta.
     """
-    _exigir_apto("cmv", prato_id)
-    return repo.json_seguro(_com_passo(prato_id, _cmv(prato_id)))
+    prato = repo.prato_carregar(prato_id)
+    if prato is None:
+        return {"erro": f"prato {prato_id} nao existe"}
+    viab = _avaliar(prato)
+    return {
+        "prato_id": prato_id,
+        "nome": prato["nome"],
+        "status": prato["status"],
+        "apto": viab.apto,
+        "pendencias": [{"tipo": p.tipo, "chave": p.chave, "pergunta": p.pergunta,
+                        "detalhe": p.detalhe} for p in viab.pendencias],
+        "comprar": [{"ingrediente": c.ingrediente, "quantidade": float(c.quantidade),
+                     "unidade": c.unidade_base, "custo": float(c.custo)} for c in viab.compras],
+        "custo_compras": float(viab.custo_compras),
+    }
 
 
 @mcp.tool
-def cenarios(prato_id: int) -> dict:
-    """Tres opcoes de preco, com a conta aberta.
+def aceitar_prato(prato_id: int, preco: float | None = None) -> dict:
+    """Fecha um prato no cardapio. So depois que a Dona Maria aprovar o preco.
 
-    A taxa de 10% incide sobre a VENDA: ela recebe 0,90 x preco. Por isso o
-    minimo e CMV/0,90, e nao CMV + 10%.
+    A partir daqui o prato consome estoque e orcamento de verdade — as duas
+    coisas passam a descontar sozinhas, e outros pratos deixam de contar com
+    o que este ja comprometeu.
 
-    EXIGE o prato aprovado no gate.
+    A chamada RECUSA enquanto houver pendencia de viabilidade. Isso nao e uma
+    instrucao que voce possa relevar: e uma checagem contra o banco, e ela
+    roda de novo aqui mesmo que voce ja tenha usado `checar_prato`.
 
-    Quem escolhe e a Dona Maria. Apresente as tres e deixe ela decidir.
+    Args:
+        prato_id: o id devolvido por `propor_prato`.
+        preco: o preco que a DONA MARIA escolheu. Nunca invente um.
     """
-    _exigir_apto("cenarios", prato_id)
-    total = Decimal(str(_cmv(prato_id)["cmv"]))
-    minimo = preco_minimo(total)
-    cs = montar_cenarios(
-        total,
-        [
-            ("Volume", (total * 3).quantize(Decimal("1")) - Decimal("0.10")),
-            ("Equilibrio", (total * 4).quantize(Decimal("1")) - Decimal("0.10")),
-            ("Premium", (total * 5).quantize(Decimal("1")) - Decimal("0.10")),
-        ],
-    )
-    return repo.json_seguro(
-        {
-            "cmv": total,
-            "preco_minimo": minimo,
-            "taxa_plataforma": "10% sobre a venda",
-            "cenarios": [
-                {
-                    "rotulo": c.rotulo,
-                    "preco": c.preco,
-                    "taxa": c.taxa,
-                    "recebe": c.recebe,
-                    "lucro": c.lucro,
-                    "margem_pct": c.margem,
-                    "cmv_pct": c.cmv_pct,
-                }
-                for c in cs
-            ],
+    prato = repo.prato_carregar(prato_id)
+    if prato is None:
+        return {"aceito": False, "motivo": f"prato {prato_id} nao existe"}
+
+    viab = _avaliar(prato)
+    if not viab.apto:
+        return {
+            "aceito": False,
+            "motivo": "ha pendencia de viabilidade — pergunte antes de fechar",
+            "pendencias": [{"tipo": p.tipo, "pergunta": p.pergunta} for p in viab.pendencias],
         }
-    )
+
+    # Aceitar o prato compromete a compra: o que ele precisa e nao esta na
+    # despensa entra em `compras`, some do orcamento e passa a existir no
+    # estoque. Sem isto a compra vivia so como consumo do prato — a sobra
+    # sumia e um segundo prato com o mesmo ingrediente voltava a dizer que
+    # ele "nao esta na despensa", com a caixa na geladeira dela.
+    ja_comprado = {c["ingrediente"] for c in repo.compras_listar(prato_id)}
+    compradas = []
+    for item in prato["itens"]:
+        if not item["comprar"] or item.get("custo_compra") is None:
+            continue
+        if item["ingrediente"] in ja_comprado:
+            continue  # reaceitar o mesmo prato nao compra duas vezes
+        compradas.append(repo.compra_registrar(
+            item["ingrediente"], item["quantidade"],
+            item.get("unidade_base") or "un", item["custo_compra"], prato_id,
+        ))
+
+    marcado = repo.prato_marcar(prato_id, "aceito", prato.get("cmv"), preco)
+    saldo = repo.orcamento()
+    return {
+        "aceito": True,
+        "prato": marcado["nome"],
+        "preco": float(marcado["preco"]) if marcado["preco"] else None,
+        "comprou": [{"ingrediente": c["ingrediente"], "quantidade": float(c["quantidade"]),
+                     "custo": float(c["custo_total"])} for c in compradas],
+        "orcamento_restante": float(saldo["restante"]),
+    }
+
+
+@mcp.tool
+def registrar_compra(ingrediente: str, quantidade: float,
+                     unidade: Literal["g", "kg", "ml", "L", "un"],
+                     custo_total: float) -> dict:
+    """Registra um complemento que a Dona Maria comprou de fato.
+
+    Use quando ela comprar MAIS do que a receita pede — "vou levar duas
+    caixas" — ou quando comprar algo por conta propria. O aceite de um prato
+    ja registra sozinho o que aquele prato precisa; esta ferramenta e para o
+    excedente.
+
+    O que entra aqui passa a existir na despensa e sai do orcamento. A sobra
+    fica disponivel para o proximo prato, em vez de virar compra repetida.
+
+    O retorno traz `estoque_apos_a_compra` com o TOTAL acumulado. Use esse
+    numero ao contar para ela — nao some de cabeca com o que lembra da
+    conversa: pode haver compra anterior que voce nao viu.
+
+    Args:
+        ingrediente: nome, como ela chama.
+        quantidade: quanto ela comprou NO TOTAL, nao o que a receita usa.
+        unidade: a unidade da compra.
+        custo_total: quantos reais ela pagou pelo total.
+    """
+    try:
+        base, fator = normalizar(unidade)
+        qtd = Decimal(str(quantidade)) * (fator if fator else Decimal("1"))
+    except Exception:
+        base, qtd = "un", Decimal(str(quantidade))
+
+    compra = repo.compra_registrar(ingrediente, qtd, base or "un",
+                                   Decimal(str(custo_total)), None)
+    saldo = repo.orcamento()
+
+    # Devolve o ACUMULADO, nao so o que acabou de entrar. Com apenas o delta,
+    # o agente somava de cabeca com o que lembrava da conversa e errava a
+    # contagem — disse "duas caixas, 400 ml" com tres caixas e 600 ml no
+    # banco. Numero conferido pelo agente e numero que ele nao viu.
+    atual = repo.despensa(ingrediente)
+    linha = min(atual, key=lambda a: len(a["ingrediente"])) if atual else None
+
+    return {
+        "comprou_agora": {
+            "ingrediente": compra["ingrediente"],
+            "quantidade": float(compra["quantidade"]),
+            "unidade": compra["unidade_base"],
+            "custo": float(compra["custo_total"]),
+        },
+        "estoque_apos_a_compra": {
+            "total": float(linha["estoque_total"]),
+            "comprometido": float(linha["comprometido"]),
+            "disponivel": float(linha["estoque"]),
+            "unidade": linha["unidade_base"],
+        } if linha else None,
+        "orcamento_restante": float(saldo["restante"]),
+    }
+
+
+@mcp.tool
+def consultar_cardapio(status: Literal["sugerido", "aceito", "recusado"] | None = None) -> dict:
+    """O cardapio da Dona Maria: o que ja fechou, o que esta em aberto.
+
+    CONSULTE ANTES de propor prato novo. O orcamento e o estoque sao do
+    CARDAPIO, nao de cada prato: tres receitas com frango dividem os mesmos
+    2 kg, e tres compras de R$ 40 nao cabem nos R$ 80.
+
+    Use tambem quando ela pedir um resumo — e a unica forma de responder
+    "o que ja temos fechado?" sem depender do que sobrou na conversa.
+
+    Args:
+        status: filtre por 'aceito' para ver so o cardapio fechado. Omita
+            para ver tambem o que esta sugerido e o que ela recusou.
+    """
+    pratos = repo.pratos_listar(status)
+    saldo = repo.orcamento()
+
+    def resumir(p: dict) -> dict:
+        porcoes = p["porcoes"] or 1
+        custo = Decimal(str(p["custo_ingredientes"] or 0))
+        return {
+            "prato_id": p["id"],
+            "nome": p["nome"],
+            "status": p["status"],
+            "porcoes": porcoes,
+            "cmv_porcao": float((custo / porcoes).quantize(Decimal("0.01"))),
+            "preco": float(p["preco"]) if p["preco"] else None,
+            "lucro_porcao": (
+                float((Decimal(str(p["preco"])) * Decimal("0.9")
+                       - custo / porcoes).quantize(Decimal("0.01")))
+                if p["preco"] else None
+            ),
+            "fonte": p["fonte"],
+        }
+
+    itens = [resumir(p) for p in pratos]
+    aceitos = [i for i in itens if i["status"] == "aceito"]
+    return {
+        "pratos": itens,
+        "total_aceitos": len(aceitos),
+        "orcamento": {
+            "total": float(saldo["total"]),
+            "gasto": float(saldo["gasto"]),
+            "restante": float(saldo["restante"]),
+        },
+    }
+
+
+@mcp.tool
+def recusar_prato(prato_id: int, motivo: str | None = None) -> dict:
+    """Tira um prato do cardapio. O estoque e o orcamento voltam sozinhos.
+
+    Use quando a Dona Maria desistir. Nao ha estorno a fazer: o consumo e
+    calculado a partir dos pratos ACEITOS, entao mudar o status ja devolve
+    tudo.
+    """
+    marcado = repo.prato_marcar(prato_id, "recusado")
+    if marcado is None:
+        return {"recusado": False, "motivo": f"prato {prato_id} nao existe"}
+    # Desfaz so as compras que o ACEITE deste prato gerou. Compra avulsa, que
+    # ela mandou registrar por conta propria, fica: recusar o prato depois nao
+    # devolve o dinheiro nem tira a caixa da geladeira dela.
+    desfeitas = repo.compras_do_prato_apagar(prato_id)
+    return {"recusado": True, "prato": marcado["nome"],
+            "compras_desfeitas": desfeitas,
+            "orcamento_restante": float(repo.orcamento()["restante"])}
+
+
+# --------------------------------------------------------------------------- #
+#  Rota do gate — nao e ferramenta MCP
+# --------------------------------------------------------------------------- #
+#  O hook `pre_tool_call` do Hermes roda dentro do container DELE, como
+#  subprocesso, e precisa saber se um prato pode ser aceito. Falar MCP dali
+#  exigiria implementar o handshake JSON-RPC em stdlib pura.
+#
+#  Esta rota devolve a mesma decisao em JSON simples: um GET, uma resposta.
+#  O hook fica em trinta linhas de urllib, sem dependencia nenhuma.
+# --------------------------------------------------------------------------- #
+@mcp.custom_route("/saude", methods=["GET"])
+async def rota_saude(request):
+    """Healthcheck: HTTP de pe e banco respondendo. Nada alem disso.
+
+    Deliberadamente NAO consulta tabela nenhuma. A versao anterior sondava
+    /gate/0, que le `pratos` — e num cluster recem-criado a tabela ainda nao
+    existia, entao o container nunca ficava healthy e o Hermes, que depende
+    dele, nunca subia. Saude de servico e "estou no ar", nao "o negocio ja
+    esta modelado".
+    """
+    from starlette.responses import JSONResponse
+
+    try:
+        with repo._pool.connection() as conexao:
+            conexao.execute("SELECT 1")
+        return JSONResponse({"status": "ok"})
+    except Exception as erro:
+        return JSONResponse({"status": "sem banco", "erro": str(erro)[:200]},
+                            status_code=503)
+
+
+@mcp.custom_route("/gate/{prato_id}", methods=["GET"])
+async def rota_gate(request):
+    from starlette.responses import JSONResponse
+
+    try:
+        prato = repo.prato_carregar(int(request.path_params["prato_id"]))
+    except (TypeError, ValueError):
+        prato = None
+    if prato is None:
+        return JSONResponse({"apto": False, "motivo": "prato inexistente"})
+
+    viab = _avaliar(prato)
+    return JSONResponse({
+        "apto": viab.apto,
+        "prato": prato["nome"],
+        "pendencias": [p.pergunta for p in viab.pendencias],
+    })
+
+
+@mcp.tool
+def consultar_orcamento() -> dict:
+    """Quanto a Dona Maria ainda tem para comprar ingredientes que faltam.
+
+    O orcamento e do CARDAPIO inteiro, nao de um prato. Tres pratos pedindo
+    R$ 40 de complemento cada nao cabem.
+    """
+    dados = repo.orcamento()
+    return {
+        "inicial": float(dados["total"]),
+        "gasto": float(dados["gasto"]),
+        "disponivel": float(dados["restante"]),
+    }
