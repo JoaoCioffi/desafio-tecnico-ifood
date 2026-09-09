@@ -464,6 +464,11 @@ def _avaliar(prato: dict):
         perfil=[vb.FatoPerfil(f["categoria"], f["item"], f["resposta"], f["status"])
                 for f in repo.perfil_listar()],
         orcamento_restante=Decimal(str(repo.orcamento()["restante"])),
+        # O rendimento vem do BANCO, nao de um palpite sobre o peso. Sem ele o
+        # dominio comparava a receita inteira contra o peso de uma marmita e
+        # barrava prato correto — perguntando justamente o numero que estava
+        # gravado na linha ao lado.
+        porcoes=int(prato.get("porcoes") or 1),
     )
 
 

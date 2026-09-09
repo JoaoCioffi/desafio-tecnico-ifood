@@ -291,26 +291,52 @@ def _checar_ingredientes(
 #                     o custo da panela toda apresentado como custo de marmita
 #
 # Os dois distorcem o CMV, e o CMV vira preco de venda. Por isso e pendencia
-# de gate, nao aviso que o agente pode ignorar. E a pergunta muda conforme o
-# lado: quanto ela serve, ou para quantas porcoes a receita rende.
-# 300 g e o piso de uma marmita de verdade. O piso anterior era 100 g, para
-# pegar so o caso extremo de unidade lida errada — e deixou passar um prato de
-# 106 g com quinze ingredientes de 5 g cada. O CMV saiu a um quarto do real.
+# de gate, nao aviso que o agente pode ignorar.
 #
-# Estes numeros sao a UNICA fonte de verdade da faixa: o verificador e2e
+# O TETO hoje pega bem menos do que pegava, e de proposito: "receita salva
+# inteira" deixou de ser um palpite sobre o peso e virou uma divisao. O
+# `avaliar` recebe o rendimento e compara o peso de UMA porcao; a panela de
+# 1,570 kg que virou CMV de marmita nao passa mais por aqui, ela e dividida
+# antes. O que sobra para o teto e o caso em que o proprio rendimento esta
+# errado.
+#
+# O PISO desceu de 300 g para 150 g. 300 g era o peso de uma marmita de
+# verdade — e era essa a suposicao errada: nem todo prato e marmita. Arroz-doce
+# a 170 g por porcao e sobremesa, nao erro; frango ao molho branco a 180 g e o
+# principal sem o acompanhamento. Os dois eram barrados por estarem certos.
+#
+# 150 g e onde os casos reais deste projeto se separam: pega o prato de 106 g
+# com quinze ingredientes de 5 g cada (CMV a um quarto do real) e os 5 g de
+# carne seca de "1 xicara" lida como 0,005 kg, sem barrar sobremesa. E menos
+# guarda do que 300 g dava, e vale dizer: um prato entre 106 g e 150 g com
+# unidade lida errada passaria. O limite anterior custava recusar prato certo,
+# que e o erro pior — ele para a conversa e nao tem como o agente contornar.
+#
+# Estes numeros sao a UNICA fonte de verdade da faixa: quem mais precisar
 # importa daqui em vez de repetir, porque duas copias divergem sozinhas.
-_PORCAO_MINIMA = PORCAO_MINIMA = Decimal("0.300")
+_PORCAO_MINIMA = PORCAO_MINIMA = Decimal("0.150")
 _PORCAO_MAXIMA = PORCAO_MAXIMA = Decimal("1.200")
 
 
-def _peso_porcao(receita: Iterable[ItemReceita]) -> Decimal | None:
-    """Quanto pesa uma porcao, somando so o que da para medir em kg ou L.
+def _peso_porcao(receita: Iterable[ItemReceita],
+                 porcoes: int = 1) -> Decimal | None:
+    """Quanto pesa UMA porcao, somando so o que da para medir em kg ou L.
+
+    A receita que chega aqui e a INTEIRA — e o que `propor_prato` documenta e
+    o que `pratos_ingredientes` guarda. Dividir pelo rendimento e o que torna
+    o numero comparavel com o peso de uma marmita.
+
+    Sem essa divisao a funcao mentia no proprio nome: devolvia o peso da
+    panela chamando de porcao, e o gate barrava receita CORRETA de 8 porcoes
+    perguntando qual era o rendimento — que ja estava gravado ao lado.
 
     None quando a receita e toda em 'un': nao ha peso para comparar.
 
     >>> _peso_porcao([ItemReceita("Feijao", Decimal("120"), "g"),
     ...               ItemReceita("Ovo", Decimal("2"), "un")])
     Decimal('0.120')
+    >>> _peso_porcao([ItemReceita("Frango", Decimal("1.44"), "kg")], porcoes=8)
+    Decimal('0.18')
     >>> _peso_porcao([ItemReceita("Ovo", Decimal("2"), "un")]) is None
     True
     """
@@ -320,7 +346,7 @@ def _peso_porcao(receita: Iterable[ItemReceita]) -> Decimal | None:
         if base in ("kg", "L") and fator:
             total += item.quantidade * fator
             mediu = True
-    return total if mediu else None
+    return total / max(1, porcoes) if mediu else None
 
 
 def avaliar(
@@ -329,6 +355,7 @@ def avaliar(
     requisitos: Sequence[RequisitoPerfil] = (),
     perfil: Sequence[FatoPerfil] = (),
     orcamento_restante: Decimal = Decimal("0"),
+    porcoes: int = 1,
 ) -> Viabilidade:
     """Responde: da para fazer este prato hoje?
 
@@ -374,19 +401,36 @@ def avaliar(
     >>> "pouco para" in r.pendencias[0].pergunta
     True
 
-    E o oposto: a receita salva sem dividir pelo rendimento.
+    E o oposto: a receita salva sem dividir pelo rendimento. Sem `porcoes`,
+    1,5 kg e o que uma pessoa recebe no prato:
 
     >>> r = avaliar([ItemReceita("Feijao preto", Decimal("1.5"), "kg")], despensa)
     >>> r.pendencias[0].tipo
     'porcao'
     >>> "receita inteira" in r.pendencias[0].pergunta
     True
+
+    COM o rendimento, a mesma receita passa — 1,5 kg para 8 da 187 g por
+    porcao, que e marmita. Este caso e regressao: o gate barrava a receita
+    correta perguntando o rendimento que ja estava gravado ao lado.
+
+    >>> farta = [ItemDespensa("Feijao preto", "kg", Decimal("3"), Decimal("9.60"))]
+    >>> avaliar([ItemReceita("Feijao preto", Decimal("1.5"), "kg")],
+    ...         farta, porcoes=8).apto
+    True
+
+    E uma sobremesa nao precisa pesar como marmita:
+
+    >>> doce = [ItemDespensa("Leite integral", "L", Decimal("2"), Decimal("5.00"))]
+    >>> avaliar([ItemReceita("Leite integral", Decimal("1.36"), "L")],
+    ...         doce, porcoes=8).apto
+    True
     """
     pendencias = _checar_perfil(requisitos, perfil)
     p_ing, compras, tem = _checar_ingredientes(receita, despensa)
     pendencias += p_ing
 
-    peso = _peso_porcao(receita)
+    peso = _peso_porcao(receita, porcoes)
     if peso is not None and not (_PORCAO_MINIMA <= peso <= _PORCAO_MAXIMA):
         if peso < _PORCAO_MINIMA:
             pergunta = (
@@ -394,7 +438,9 @@ def avaliar(
                 "uma marmita. Quanto a senhora serve por porcao?"
             )
         else:
-            rende = int(peso / Decimal("0.5")) or 2
+            # Quantas porcoes o peso sugere, para a pergunta trazer um numero
+            # em vez de devolver o problema em branco.
+            rende = int(peso * porcoes / Decimal("0.5")) or 2
             pergunta = (
                 f"Somando tudo da {peso:.2f} kg — isso parece a receita inteira, nao "
                 f"uma marmita (daria umas {rende} porcoes). Para quantas porcoes essa "

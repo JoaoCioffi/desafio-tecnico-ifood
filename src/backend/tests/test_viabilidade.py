@@ -138,3 +138,66 @@ def test_sem_requisito_e_com_estoque_o_prato_passa():
     v = avaliar(RECEITA, DESPENSA, [], [], orcamento_restante=D("80.00"))
     assert v.apto is True
     assert v.pendencias == ()
+
+
+# --------------------------------------------------------------------------- #
+# Rendimento
+#
+# A receita gravada e a INTEIRA — `propor_prato` documenta assim e
+# `pratos_ingredientes` guarda assim. O gate compara o peso de UMA porcao,
+# entao precisa do rendimento. Ele ignorava o campo e barrava prato correto
+# perguntando o numero que estava gravado na linha ao lado.
+# --------------------------------------------------------------------------- #
+FARTA = [
+    ItemDespensa("Peito de frango", "kg", D("5.0"), D("14.00")),
+    ItemDespensa("Leite integral", "L", D("5.0"), D("5.00")),
+]
+
+
+def test_receita_de_oito_porcoes_nao_e_confundida_com_marmita():
+    """O caso que quebrou em producao, com os numeros dele.
+
+    Frango ao molho branco: 1,436 kg no total, rendimento 8 — ou seja, 180 g
+    por porcao. O agente registrou tudo certo, a Dona Maria confirmou as 8
+    porcoes, e o gate recusou dizendo "isso parece a receita inteira, para
+    quantas porcoes essa receita rende?".
+    """
+    receita = [ItemReceita("Peito de frango", D("0.850"), "kg"),
+               ItemReceita("Leite integral", D("0.500"), "L")]
+    assert avaliar(receita, FARTA, [], [], D("80.00"), porcoes=8).apto is True
+
+
+def test_sobremesa_nao_precisa_pesar_como_marmita():
+    """Arroz-doce: 170 g por porcao. O piso de 300 g barrava por estar certo.
+
+    O piso nao mede "e uma marmita", mede "a unidade foi lida errada". Sao
+    coisas diferentes, e confundi-las recusa prato bom — que e o erro pior,
+    porque para a conversa e o agente nao tem como contornar.
+    """
+    receita = [ItemReceita("Leite integral", D("1.36"), "L")]
+    assert avaliar(receita, FARTA, [], [], D("80.00"), porcoes=8).apto is True
+
+
+def test_unidade_lida_errada_continua_barrada():
+    """5 g de carne por porcao: "1 xicara" lida como 0,005 kg.
+
+    O contraponto do teste acima. Afrouxar o piso nao pode significar aceitar
+    qualquer coisa — sem esta guarda, o CMV sai a uma fracao do real e o preco
+    de venda vai junto.
+    """
+    receita = [ItemReceita("Peito de frango", D("0.040"), "kg")]
+    v = avaliar(receita, FARTA, [], [], D("80.00"), porcoes=8)
+    assert v.apto is False
+    assert any(p.tipo == "porcao" for p in v.pendencias)
+
+
+def test_sem_rendimento_a_receita_inteira_ainda_e_barrada():
+    """Rendimento ausente vale 1: a panela inteira como porcao unica.
+
+    E o default certo. Se o agente esquecer de informar `porcoes`, o prato
+    para no gate em vez de virar um CMV oito vezes maior que o real.
+    """
+    receita = [ItemReceita("Peito de frango", D("1.44"), "kg")]
+    v = avaliar(receita, FARTA, [], [], D("80.00"))
+    assert v.apto is False
+    assert any("receita inteira" in p.pergunta for p in v.pendencias)
