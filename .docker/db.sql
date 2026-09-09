@@ -324,6 +324,79 @@ COMMENT ON COLUMN compras.prato_id    IS 'Prato que motivou a compra. NULO quand
 
 
 -- =============================================================================
+--  8. cardapio  —  o que a Dona Maria colocou a venda
+-- =============================================================================
+--  Publicar e um FATO DATADO, nao uma coluna booleana em `pratos`. Tirar do ar
+--  preenche `retirado_em` em vez de apagar a linha: os pedidos ja feitos
+--  continuam apontando para a publicacao que os originou, com o preco que
+--  vigorava. Com booleano, despublicar deixaria pedido orfao e o historico de
+--  quanto ela cobrava sumiria.
+--
+--  `lotes` e quantas vezes ela vai cozinhar a receita. A receita rende
+--  `pratos.porcoes`, entao o cardapio oferece lotes x porcoes — e compromete
+--  lotes x ingrediente no `vw_estoque`. E o que impede publicar 60 marmitas
+--  com feijao para 4.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS cardapio (
+    id            SERIAL         PRIMARY KEY,
+    prato_id      INTEGER        NOT NULL REFERENCES pratos(id) ON DELETE CASCADE,
+    preco         NUMERIC(12, 2) NOT NULL CHECK (preco > 0),
+    lotes         INTEGER        NOT NULL DEFAULT 1 CHECK (lotes > 0),
+    publicado_em  TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    retirado_em   TIMESTAMPTZ
+);
+
+-- Uma publicacao ativa por prato. Nao e zelo: o `vw_estoque` faz LEFT JOIN
+-- aqui, e duas linhas ativas para o mesmo prato duplicariam cada ingrediente
+-- na conta do comprometido. O indice e o que torna aquele JOIN seguro.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cardapio_ativo
+    ON cardapio (prato_id) WHERE retirado_em IS NULL;
+
+COMMENT ON TABLE  cardapio IS 'Pratos publicados para venda — o cliente so enxerga daqui';
+COMMENT ON COLUMN cardapio.preco       IS 'Preco de venda por porcao, definido por ELA';
+COMMENT ON COLUMN cardapio.lotes       IS 'Quantas vezes a receita sera feita; oferta = lotes x pratos.porcoes';
+COMMENT ON COLUMN cardapio.retirado_em IS 'NULO = no ar. Preenchido = saiu, mas o historico fica';
+
+
+-- =============================================================================
+--  9. pedidos  —  o que o cliente comprou
+-- =============================================================================
+--  `preco_unitario` e COPIADO da publicacao, nao lido dela por FK. O preco e
+--  do momento da compra: se ela reajustar amanha, o que ja foi vendido
+--  continua valendo o que foi cobrado. Ler por JOIN reescreveria o passado a
+--  cada mudanca de preco.
+--
+--  As tres colunas de dinheiro sao GENERATED. A taxa de 10% do enunciado
+--  incide sobre a venda, e deixar essa multiplicacao para quem inserir a linha
+--  e convidar a divergencia — foi exatamente esse tipo de conta derivada a
+--  mao que gerou os piores erros deste projeto. Aqui o banco calcula, sempre.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS pedidos (
+    id              SERIAL         PRIMARY KEY,
+    cardapio_id     INTEGER        NOT NULL REFERENCES cardapio(id),
+    cliente         TEXT           NOT NULL,
+    porcoes         INTEGER        NOT NULL CHECK (porcoes > 0),
+    preco_unitario  NUMERIC(12, 2) NOT NULL CHECK (preco_unitario > 0),
+    criado_em       TIMESTAMPTZ    NOT NULL DEFAULT now(),
+
+    valor_bruto   NUMERIC(12, 2) GENERATED ALWAYS AS
+                  (porcoes * preco_unitario) STORED,
+    taxa          NUMERIC(12, 2) GENERATED ALWAYS AS
+                  (ROUND(porcoes * preco_unitario * 0.10, 2)) STORED,
+    valor_liquido NUMERIC(12, 2) GENERATED ALWAYS AS
+                  (porcoes * preco_unitario
+                   - ROUND(porcoes * preco_unitario * 0.10, 2)) STORED
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedidos_cardapio ON pedidos (cardapio_id);
+
+COMMENT ON TABLE  pedidos IS 'Pedidos do cliente — a unica entrada de dinheiro';
+COMMENT ON COLUMN pedidos.preco_unitario IS 'Congelado na compra: reajuste posterior nao reescreve o passado';
+COMMENT ON COLUMN pedidos.taxa           IS 'Os 10% da plataforma. Calculado pelo banco, nunca informado';
+COMMENT ON COLUMN pedidos.valor_liquido  IS 'O que de fato entra no caixa dela — USE ESTE';
+
+
+-- =============================================================================
 --  Visoes derivadas
 --
 --  Estoque comprometido e orcamento gasto sao CONTA, nao dado — por isso sao
@@ -361,26 +434,38 @@ somado AS (
            SUM(valor) / NULLIF(SUM(quantidade), 0) AS custo_unitario,
            min(unidade_planilha)  AS unidade_planilha
       FROM origem GROUP BY ingrediente
+),
+compromisso AS (
+    -- Conta TODO consumo de prato aceito, comprado ou nao. O filtro
+    -- `NOT pi.comprar` fazia sentido quando a compra nao entrava no estoque;
+    -- agora que entra, nao descontar o consumo faria ela comprar duas caixas,
+    -- usar uma, e o sistema dizer que tem duas.
+    --
+    -- O `* lotes` e o que liga a publicacao ao estoque: publicar tres lotes e
+    -- cozinhar a receita tres vezes, e compromete tres vezes o ingrediente.
+    --
+    -- COALESCE 1 e o que preserva o comportamento anterior — prato aceito e
+    -- nao publicado continua comprometendo exatamente uma receita, como antes
+    -- de existir cardapio. O LEFT JOIN nao multiplica linha porque
+    -- `idx_cardapio_ativo` garante no maximo uma publicacao ativa por prato.
+    SELECT pi.ingrediente,
+           SUM(pi.quantidade * COALESCE(c.lotes, 1)) AS quantidade
+      FROM pratos_ingredientes pi
+      JOIN pratos        p ON p.id = pi.prato_id AND p.status = 'aceito'
+      LEFT JOIN cardapio c ON c.prato_id = pi.prato_id AND c.retirado_em IS NULL
+     GROUP BY pi.ingrediente
 )
 SELECT s.ingrediente,
        s.unidade_base,
        s.estoque_total,
-       -- Conta TODO consumo de prato aceito, comprado ou nao. O filtro
-       -- `NOT pi.comprar` fazia sentido quando a compra nao entrava no
-       -- estoque; agora que entra, nao descontar o consumo faria ela comprar
-       -- duas caixas, usar uma, e o sistema dizer que tem duas.
-       COALESCE(SUM(pi.quantidade) FILTER (WHERE p.status = 'aceito'), 0) AS comprometido,
-       s.estoque_total
-         - COALESCE(SUM(pi.quantidade) FILTER (WHERE p.status = 'aceito'), 0) AS disponivel,
+       COALESCE(cp.quantidade, 0)                   AS comprometido,
+       s.estoque_total - COALESCE(cp.quantidade, 0) AS disponivel,
        s.custo_unitario,
        s.unidade_planilha
   FROM somado s
-  LEFT JOIN pratos_ingredientes pi ON pi.ingrediente = s.ingrediente
-  LEFT JOIN pratos              p  ON p.id = pi.prato_id
- GROUP BY s.ingrediente, s.unidade_base, s.estoque_total,
-          s.custo_unitario, s.unidade_planilha;
+  LEFT JOIN compromisso cp USING (ingrediente);
 
-COMMENT ON VIEW vw_estoque IS 'Despensa + compras, menos o que os pratos ACEITOS consomem';
+COMMENT ON VIEW vw_estoque IS 'Despensa + compras, menos o consumo dos ACEITOS x lotes publicados';
 
 
 DROP VIEW IF EXISTS vw_orcamento;
@@ -397,3 +482,67 @@ SELECT o.valor_inicial AS total,
 
 COMMENT ON VIEW vw_orcamento IS 'Os R$ 80 para complementos: total, gasto e restante';
 COMMENT ON COLUMN orcamento.valor_inicial    IS 'R$ 80,00 do enunciado. Imutavel, e a referencia';
+
+
+-- =============================================================================
+--  vw_cardapio  —  o que esta a venda AGORA
+-- =============================================================================
+--  O `p.status = 'aceito'` nao e redundante. Se ela mudar de ideia e recusar um
+--  prato ja publicado, ele sai do cardapio sozinho — mesmo padrao de ledger do
+--  estoque: a disponibilidade e conta, nao dado, e nao ha estorno para esquecer.
+--
+--  `porcoes_disponiveis` e o teto que o cliente nao pode furar. Sai daqui, nao
+--  do prompt do agente: e a diferenca entre um bot instruido a nao vender
+--  demais e um que nao consegue.
+-- =============================================================================
+DROP VIEW IF EXISTS vw_cardapio;
+CREATE VIEW vw_cardapio AS
+SELECT c.id                AS cardapio_id,
+       p.id                AS prato_id,
+       p.nome,
+       c.preco,
+       p.cmv,
+       p.porcoes           AS porcoes_por_lote,
+       c.lotes,
+       c.lotes * p.porcoes AS porcoes_publicadas,
+       COALESCE(SUM(ped.porcoes), 0)::INTEGER AS porcoes_vendidas,
+       (c.lotes * p.porcoes - COALESCE(SUM(ped.porcoes), 0))::INTEGER
+                           AS porcoes_disponiveis,
+       COALESCE(SUM(ped.valor_liquido), 0)::NUMERIC(12, 2) AS receita_liquida,
+       c.publicado_em
+  FROM cardapio c
+  JOIN pratos   p   ON p.id = c.prato_id
+  LEFT JOIN pedidos ped ON ped.cardapio_id = c.id
+ WHERE c.retirado_em IS NULL
+   AND p.status = 'aceito'
+ GROUP BY c.id, p.id, p.nome, c.preco, p.cmv, p.porcoes, c.lotes, c.publicado_em;
+
+COMMENT ON VIEW vw_cardapio IS 'Pratos no ar, com quantas porcoes ainda restam';
+
+
+-- =============================================================================
+--  vw_caixa  —  o dinheiro dela, com as vendas
+-- =============================================================================
+--  Fica AO LADO de `vw_orcamento`, nao no lugar dela. A vw_orcamento responde
+--  a pergunta do enunciado ("dos R$ 80, quanto sobrou para complementos") e
+--  continua respondendo exatamente isso. Esta responde outra: quanto ela tem
+--  no caixa hoje, ja com o que vendeu.
+--
+--  Entra o LIQUIDO. Somar o bruto contaria como dela os 10% que vao para a
+--  plataforma, e o saldo mentiria para cima justamente na direcao que faria
+--  ela gastar o que nao tem.
+-- =============================================================================
+DROP VIEW IF EXISTS vw_caixa;
+CREATE VIEW vw_caixa AS
+SELECT o.valor_inicial AS orcamento_inicial,
+       COALESCE((SELECT SUM(custo_total)   FROM compras), 0)::NUMERIC(12, 2) AS gasto,
+       COALESCE((SELECT SUM(valor_bruto)   FROM pedidos), 0)::NUMERIC(12, 2) AS vendas_brutas,
+       COALESCE((SELECT SUM(taxa)          FROM pedidos), 0)::NUMERIC(12, 2) AS taxa_plataforma,
+       COALESCE((SELECT SUM(valor_liquido) FROM pedidos), 0)::NUMERIC(12, 2) AS receita_liquida,
+       (o.valor_inicial
+        - COALESCE((SELECT SUM(custo_total)   FROM compras), 0)
+        + COALESCE((SELECT SUM(valor_liquido) FROM pedidos), 0))::NUMERIC(12, 2) AS saldo
+  FROM orcamento o
+ WHERE o.id = 1;
+
+COMMENT ON VIEW vw_caixa IS 'Orcamento - compras + vendas liquidas. O que ela pode gastar hoje';
