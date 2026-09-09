@@ -1,5 +1,15 @@
 # Sabor da Maria
 
+<p align="center">
+  <img src="docs/painel-runner.svg" width="49%" alt="runner.py — painel da stack: INFRA, HERMES e HARDWARE ao vivo">
+  &nbsp;
+  <img src="docs/painel-mcp.svg" width="49%" alt="painel-mcp.py — chamadas de ferramenta, decisões do gate e latência">
+</p>
+
+<p align="center">
+  <sub><b>runner.py</b> segura a stack e mostra o estado &nbsp;·&nbsp; <b>painel-mcp.py</b> mostra o que o agente pediu, o que voltou e o que o gate decidiu</sub>
+</p>
+
 Agente de cardápio e precificação construído sobre o
 [Hermes Agent](https://github.com/nousresearch/hermes-agent), para o desafio técnico
 de Senior AI Engineer.

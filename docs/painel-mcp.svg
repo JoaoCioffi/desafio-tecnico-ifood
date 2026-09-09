@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 655 733" width="655" height="733" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="12.0">
+<rect x="0.5" y="0.5" width="654" height="732" rx="10" fill="#1B1B1F" stroke="#33333A"/>
+<path d="M0.5 10.5a10 10 0 0 1 10-10h634a10 10 0 0 1 10 10v24H0.5z" fill="#2A2A30"/>
+<circle cx="20" cy="17" r="5.5" fill="#FF5F57"/>
+<circle cx="38" cy="17" r="5.5" fill="#FEBC2E"/>
+<circle cx="56" cy="17" r="5.5" fill="#28C840"/>
+<text x="328" y="21" fill="#8B8B95" font-size="11" text-anchor="middle">painel-mcp.py — o servidor de ferramentas</text>
+<text x="18.0" y="65" xml:space="preserve"><tspan fill="#C9C3C4">  __  __  ____ ____    ____            _          __</tspan></text>
+<text x="18.0" y="82" xml:space="preserve"><tspan fill="#C9C3C4"> |  \/  |/ ___|  _ \  |  _ \  __ _ ___| |__    _  \ \</tspan></text>
+<text x="18.0" y="99" xml:space="preserve"><tspan fill="#C9C3C4"> | |\/| | |   | |_) | | | | |/ _` / __| '_ \  (_)  | |</tspan></text>
+<text x="18.0" y="116" xml:space="preserve"><tspan fill="#C9C3C4"> | |  | | |___|  __/  | |_| | (_| \__ \ | | |  _   | |</tspan></text>
+<text x="18.0" y="133" xml:space="preserve"><tspan fill="#C9C3C4"> |_|  |_|\____|_|     |____/ \__,_|___/_| |_| (_)  | |</tspan></text>
+<text x="18.0" y="150" xml:space="preserve"><tspan fill="#C9C3C4">                                                  /_/</tspan></text>
+<text x="18.0" y="184" xml:space="preserve"><tspan fill="#6E6E78">         sabor-da-maria · mcp · 18 ferramentas</tspan></text>
+<text x="18.0" y="218" xml:space="preserve"><tspan fill="#D8D2D3">  </tspan><tspan fill="#FFFFFF">SERVIDOR</tspan></text>
+<text x="18.0" y="235" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">saude</tspan><tspan fill="#D8D2D3">     </tspan><tspan fill="#5FD68C">ok</tspan><tspan fill="#D8D2D3"> </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> no ar ha 41m12s</tspan></text>
+<text x="18.0" y="252" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">pool</tspan><tspan fill="#D8D2D3">      2/4 conexoes ao postgres</tspan></text>
+<text x="18.0" y="269" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">chamadas</tspan><tspan fill="#D8D2D3">  63 total </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> </tspan><tspan fill="#6E6E78">0 erro</tspan><tspan fill="#D8D2D3"> </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> ultima ha 3s</tspan></text>
+<text x="18.0" y="286" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">gate</tspan><tspan fill="#D8D2D3">      7 avaliacoes </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> </tspan><tspan fill="#FF6B78">3 bloqueio(s)</tspan></text>
+<text x="18.0" y="320" xml:space="preserve"><tspan fill="#D8D2D3">  </tspan><tspan fill="#FFFFFF">FLUXO</tspan><tspan fill="#D8D2D3">                                        </tspan><tspan fill="#6E6E78">mais recente embaixo</tspan></text>
+<text x="18.0" y="337" xml:space="preserve"><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">01:08:19.774</tspan><tspan fill="#D8D2D3">  </tspan><tspan fill="#5FD68C">maria  </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> propor_prato                 412ms</tspan></text>
+<text x="18.0" y="354" xml:space="preserve"><tspan fill="#D8D2D3">                          </tspan><tspan fill="#6E6E78">in</tspan><tspan fill="#D8D2D3"> {5}       </tspan><tspan fill="#6E6E78">out</tspan><tspan fill="#D8D2D3"> {7}   </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> 892 B</tspan></text>
+<text x="18.0" y="371" xml:space="preserve"><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">01:08:20.190</tspan><tspan fill="#D8D2D3">  </tspan><tspan fill="#FF6B78">gate   </tspan><tspan fill="#FF6B78">✗</tspan><tspan fill="#D8D2D3"> GET /gate/4                   26ms  </tspan><tspan fill="#FF6B78">BLOQUEIA</tspan></text>
+<text x="18.0" y="388" xml:space="preserve"><tspan fill="#D8D2D3">                          </tspan><tspan fill="#6E6E78">pendencias 1</tspan></text>
+<text x="18.0" y="405" xml:space="preserve"><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">01:08:44.301</tspan><tspan fill="#D8D2D3">  </tspan><tspan fill="#5FD68C">maria  </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> aceitar_prato                121ms</tspan></text>
+<text x="18.0" y="422" xml:space="preserve"><tspan fill="#D8D2D3">                          </tspan><tspan fill="#6E6E78">in</tspan><tspan fill="#D8D2D3"> {2}       </tspan><tspan fill="#6E6E78">out</tspan><tspan fill="#D8D2D3"> {5}   </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> 366 B</tspan></text>
+<text x="18.0" y="439" xml:space="preserve"><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">01:08:59.640</tspan><tspan fill="#D8D2D3">  </tspan><tspan fill="#5FD68C">maria  </tspan><tspan fill="#FFB800">✗</tspan><tspan fill="#D8D2D3"> publicar_prato                73ms  </tspan><tspan fill="#FFB800">RECUSA</tspan></text>
+<text x="18.0" y="456" xml:space="preserve"><tspan fill="#D8D2D3">                          </tspan><tspan fill="#6E6E78">despensa nao aguenta 6 lotes</tspan></text>
+<text x="18.0" y="473" xml:space="preserve"><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">01:09:30.918</tspan><tspan fill="#D8D2D3">  </tspan><tspan fill="#FFB800">cliente</tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> consultar_cardapio_publico    29ms</tspan></text>
+<text x="18.0" y="490" xml:space="preserve"><tspan fill="#D8D2D3">                          </tspan><tspan fill="#6E6E78">in</tspan><tspan fill="#D8D2D3"> 0         </tspan><tspan fill="#6E6E78">out</tspan><tspan fill="#D8D2D3"> {3}   </tspan><tspan fill="#6E6E78">·</tspan><tspan fill="#D8D2D3"> 508 B</tspan></text>
+<text x="18.0" y="524" xml:space="preserve"><tspan fill="#D8D2D3">  </tspan><tspan fill="#FFFFFF">ULTIMA</tspan><tspan fill="#D8D2D3">                     </tspan><tspan fill="#6E6E78">consultar_cardapio_publico · cliente · 29ms</tspan></text>
+<text x="18.0" y="541" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">entrada</tspan><tspan fill="#D8D2D3">   </tspan><tspan fill="#6E6E78">—</tspan></text>
+<text x="18.0" y="558" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">saida</tspan><tspan fill="#D8D2D3">     itens      [3]</tspan></text>
+<text x="18.0" y="575" xml:space="preserve"><tspan fill="#D8D2D3">                vazio      false</tspan></text>
+<text x="18.0" y="609" xml:space="preserve"><tspan fill="#D8D2D3">  </tspan><tspan fill="#FFFFFF">AGREGADO</tspan><tspan fill="#D8D2D3">                                          </tspan><tspan fill="#6E6E78">desde a subida</tspan></text>
+<text x="18.0" y="626" xml:space="preserve"><tspan fill="#D8D2D3">      </tspan><tspan fill="#6E6E78">ferramenta                   n     p50     max  erro   latencia</tspan></text>
+<text x="18.0" y="643" xml:space="preserve"><tspan fill="#D8D2D3">      consultar_despensa          14    38ms   210ms     0   </tspan><tspan fill="#5FD68C">▁▂▁▁▃▂▁▁▂▁▁▂</tspan></text>
+<text x="18.0" y="660" xml:space="preserve"><tspan fill="#D8D2D3">      propor_prato                 4   392ms   612ms     0   </tspan><tspan fill="#5FD68C">▄▆█▅▄▆▇█▅▄▅▆</tspan></text>
+<text x="18.0" y="677" xml:space="preserve"><tspan fill="#D8D2D3">      publicar_prato               3    70ms    73ms     </tspan><tspan fill="#FF6B78">1</tspan><tspan fill="#D8D2D3">   </tspan><tspan fill="#5FD68C">▂▂▃▂▂▃▂▂▃▂▂▃</tspan></text>
+<text x="18.0" y="711" xml:space="preserve"><tspan fill="#D8D2D3">  </tspan><tspan fill="#6E6E78">Ctrl+C sai · este painel so LE · quem manda na stack e o runner</tspan></text>
+</svg>
