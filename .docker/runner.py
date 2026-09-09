@@ -64,6 +64,22 @@ PLANILHA = RAIZ / "shared" / "despensa_dona_maria.xlsx"
 ORCAMENTO_INICIAL = Decimal("80.00")
 
 PROJETO = "sabor-da-maria"
+
+# Cabecalho do painel. Cru, sem cor e sem margem: quem desenha decide as duas.
+#
+# String RAW de proposito — a arte e feita de barras invertidas, e `\_` ou `\/`
+# num literal normal e sequencia de escape invalida. Hoje o Python so avisa;
+# a partir da 3.12 o aviso vira erro de sintaxe.
+BANNER = r"""
+  _   ____        _                      _         __  __            _         _
+ | | / ___|  __ _| |__   ___  _ __    __| | __ _  |  \/  | __ _ _ __(_) __ _  | |
+ | | \___ \ / _` | '_ \ / _ \| '__|  / _` |/ _` | | |\/| |/ _` | '__| |/ _` | | |
+ | |  ___) | (_| | |_) | (_) | |    | (_| | (_| | | |  | | (_| | |  | | (_| | | |
+ | | |____/ \__,_|_.__/ \___/|_|     \__,_|\__,_| |_|  |_|\__,_|_|  |_|\__,_| | |
+ |_|                                                                          |_|
+"""[1:-1].split("\n")
+
+LEGENDA = "docker compose telemetry"
 VOLUME = "sabor-da-maria-pgdata"
 REDE = "sabor-da-maria-net"
 # O MCP entra como servico monitorado, mas NAO ganha bloco proprio: o painel
@@ -1159,6 +1175,31 @@ def bloco_hardware(tel: Telemetria) -> list[str]:
     return linhas
 
 
+def cabecalho(versao: str) -> list[str]:
+    """O banner, ou uma linha so quando ele nao cabe.
+
+    O `cortar` do painel corta pela direita, e arte ASCII cortada pela direita
+    nao degrada: vira lixo. Entao a decisao e aqui, antes de desenhar — cabe
+    inteiro ou nao aparece.
+
+    A legenda e centrada sobre a largura do banner em vez de vir com os
+    espacos ja contados. A versao da engine entra no meio dela e muda de
+    tamanho conforme a maquina; indentacao cravada descentraria sozinha na
+    primeira maquina com outra versao do Docker.
+    """
+    legenda = f"{LEGENDA} · engine {versao}"
+    largura_banner = max(len(l) for l in BANNER)
+
+    if largura() < largura_banner:
+        return [f"  {B}{PROJETO}{R} {D}· {legenda}{R}"]
+
+    # Arredonda para CIMA quando a sobra e impar: com 81 de banner e 40 de
+    # legenda sobram 41 colunas, e meio caractere nao existe. Para cima, a
+    # legenda encosta na perna direita do banner em vez de flutuar solta.
+    recuo = " " * ((largura_banner - len(legenda) + 1) // 2)
+    return [*(f"{B}{l}{R}" for l in BANNER), "", f"{D}{recuo}{legenda}{R}"]
+
+
 # --------------------------------------------------------------------------- #
 def monitorar(variaveis: dict[str, str], versao: str, timeout: int = 120) -> None:
     """O painel vivo, do `up` ate o Ctrl+C. E ele que segura o terminal.
@@ -1181,7 +1222,7 @@ def monitorar(variaveis: dict[str, str], versao: str, timeout: int = 120) -> Non
 
             corpo = [
                 "",
-                f"  {B}{PROJETO}{R} {D}· docker compose · engine {versao}{R}",
+                *cabecalho(versao),
                 "",
                 *bloco_infra(estados, tel, variaveis, quadro),
                 "",
