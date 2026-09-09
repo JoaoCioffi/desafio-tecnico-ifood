@@ -141,7 +141,11 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 
 /* armadilha: duas direcoes */
 .dirs{display:grid;grid-template-columns:1fr 1fr;gap:15px;flex:1;min-height:0}
-.dir{border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;border:1px solid}
+/* A sobra e repartida entre TODOS os blocos, nao empilhada antes do ultimo.
+   Com a consequencia presa no rodape por `margin-top:auto`, o vao inteiro
+   virava um buraco unico no meio do cartao. */
+.dir{border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;border:1px solid;
+  justify-content:space-between}
 .dir.up{background:var(--amber-soft);border-color:var(--amber-line)}
 .dir.down{background:var(--red-tint);border-color:var(--red-soft)}
 .dir .dh{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;
@@ -149,8 +153,8 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 .dir.up .dh{color:var(--amber)} .dir.down .dh{color:var(--red-deep)}
 .dir h4{font-size:23px;font-weight:800;letter-spacing:-.6px;margin:7px 0 5px;color:var(--ink)}
 .dir .sd{font-size:12.4px;color:var(--body);line-height:1.44}
-.ex{background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:9px;padding:9px 13px;margin-top:13px}
-.exl{display:flex;align-items:baseline;gap:9px;font-size:12px;padding:5px 0}
+.ex{background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:10px;padding:13px 15px}
+.exl{display:flex;align-items:baseline;gap:9px;font-size:12.6px;padding:7px 0}
 .exl .en{font-weight:700;color:var(--ink);flex:1}
 .exl .ev{font-family:var(--mono);font-size:11.4px;color:var(--muted);text-decoration:line-through}
 .exl .er{font-family:var(--mono);font-size:11.4px;font-weight:700;color:var(--green-ink)}
@@ -158,21 +162,25 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
   padding:2px 7px;border-radius:5px}
 .dir.up .ef{background:var(--amber-soft);color:var(--amber)}
 .dir.down .ef{background:var(--red-soft);color:var(--red-deep)}
-.conseq{margin-top:auto;padding-top:13px;font-size:12.8px;line-height:1.42;font-weight:600}
+.conseq{font-size:13.2px;line-height:1.44;font-weight:600}
 .dir.up .conseq{color:#8A5806} .dir.down .conseq{color:var(--red-deep)}
 .conseq b{font-weight:800}
 
 /* arquitetura */
-.arch{display:flex;flex-direction:column;flex:1;min-height:0;gap:7px}
-.zone{border:1px dashed var(--slate-line);border-radius:11px;padding:8px 10px 10px;
-  background:var(--slate-soft)}
+/* A altura e distribuida, nao natural: sem `flex:1` na zona e nas fileiras o
+   diagrama encolhia para o tamanho do texto e sobrava meia tela em branco. */
+.arch{display:flex;flex-direction:column;flex:1;min-height:0;gap:9px}
+.arch>.tier{flex:0 0 auto}
+.zone{border:1px dashed var(--slate-line);border-radius:12px;padding:10px 12px 12px;
+  background:var(--slate-soft);flex:1;min-height:0;display:flex;flex-direction:column}
 .zone .zl{font-size:9px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;
-  color:var(--muted);margin-bottom:7px}
-.tier{display:grid;gap:9px}
+  color:var(--muted);margin-bottom:9px;flex-shrink:0}
+.zone .tier{flex:1;min-height:0}
+.tier{display:grid;gap:10px}
 .t2{grid-template-columns:1fr 1fr}
 .t3{grid-template-columns:1fr 1fr 1fr}
-.node{border:1px solid var(--line);border-radius:9px;background:#fff;padding:8px 12px;
-  display:flex;align-items:center;gap:9px;min-height:0}
+.node{border:1px solid var(--line);border-radius:10px;background:#fff;padding:12px 14px;
+  display:flex;align-items:center;gap:11px;min-height:0}
 .node .ic{color:var(--slate)}
 .node b{font-size:12.2px;font-weight:800;color:var(--ink);display:block;line-height:1.1;letter-spacing:-.2px}
 .node small{font-size:10px;color:var(--muted);display:block;line-height:1.25;margin-top:2px}
@@ -535,26 +543,26 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
         <div class="zl">docker compose · rede interna · sobe com um comando</div>
         <div class="tier t2">
           <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>Hermes · consultora</b><small>15 ferramentas · 7 procedimentos</small></div>
+            <div><b>A consultora</b><small>conversa com a Dona Maria e conduz a decisão</small></div>
             <span class="tag pill ai">Agente</span></div>
           <div class="node ai"><svg class="ic"><use href="#i-bot"/></svg>
-            <div><b>Hermes · balcão</b><small>3 ferramentas · só o cardápio</small></div>
+            <div><b>O balcão</b><small>atende quem faz o pedido</small></div>
             <span class="tag pill ai">Agente</span></div>
         </div>
-        <div class="arrow" style="padding:6px 0"><svg class="ic"><use href="#i-arrow"/></svg> protocolo MCP, sobre HTTP</div>
+        <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg> protocolo aberto de ferramentas</div>
         <div class="tier t3">
           <div class="node gate"><svg class="ic"><use href="#i-shield"/></svg>
-            <div><b>Gate de viabilidade</b><small>roda antes da ferramenta</small></div></div>
+            <div><b>As garantias</b><small>rodam antes, e o modelo não as alcança</small></div></div>
           <div class="node" style="grid-column:2 / 4"><svg class="ic"><use href="#i-server"/></svg>
-            <div><b>Servidor MCP · 18 ferramentas</b><small>a régua de custo, preço e estoque</small></div>
+            <div><b>A régua do negócio</b><small>custo, preço, estoque e orçamento</small></div>
             <span class="tag pill det">Determinístico</span></div>
         </div>
-        <div class="arrow" style="padding:6px 0"><svg class="ic"><use href="#i-arrow"/></svg></div>
+        <div class="arrow" style="flex:0 0 auto;padding:7px 0"><svg class="ic"><use href="#i-arrow"/></svg></div>
         <div class="tier t2">
           <div class="node data"><svg class="ic"><use href="#i-db"/></svg>
-            <div><b>PostgreSQL</b><small>onde os dois agentes se encontram</small></div></div>
+            <div><b>O estado</b><small>onde os dois agentes se encontram</small></div></div>
           <div class="node"><svg class="ic"><use href="#i-term"/></svg>
-            <div><b>Painéis ao vivo</b><small>carga da planilha e observabilidade</small></div></div>
+            <div><b>Os painéis</b><small>carga da planilha e observabilidade ao vivo</small></div></div>
         </div>
       </div>
       <div class="leg">
