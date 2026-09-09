@@ -9,16 +9,19 @@ entram nas etapas seguintes.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 from typing import Literal
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware
 from pydantic import BaseModel, Field
 
 from domain.precificacao import ItemCusto
 from domain.precificacao import calcular_cmv as calcular
 from domain.precificacao import montar_cenarios, preco_minimo, preco_por_alvo
-from domain.unidades import UnidadeIncompativel, converter, normalizar
+from domain.unidades import (UnidadeIncompativel, consolidar, converter,
+                            normalizar)
 # Importado como MODULO, nao pelos nomes: `FatoPerfil` e `ItemReceita` tambem
 # existem aqui como modelos pydantic das ferramentas, e a definicao local
 # sombreava silenciosamente o import do dominio — o erro so aparecia em
@@ -26,6 +29,7 @@ from domain.unidades import UnidadeIncompativel, converter, normalizar
 from domain import viabilidade as vb
 
 from . import repo
+from . import observador as obs
 
 mcp = FastMCP(
     "sabor-da-maria",
@@ -36,6 +40,39 @@ mcp = FastMCP(
         "devolvem ja esta normalizado por unidade de medida real."
     ),
 )
+
+class Observador(Middleware):
+    """Mede cada chamada de ferramenta, registra e sai da frente.
+
+    Mora aqui, e nao no `observador.py`, porque `Middleware` so existe dentro da
+    imagem do MCP — e aquele modulo precisa importar no host para os doctests da
+    forma dos payloads rodarem no pytest, sem Docker.
+
+    O `finally` nao e zelo: sem ele, a chamada que LEVANTA some do painel, e ela
+    e justamente a que se quer ver. A excecao continua subindo; o observador so
+    anota que passou por aqui.
+    """
+
+    async def on_call_tool(self, context, call_next):
+        relogio = time.perf_counter()
+        resultado, erro = None, None
+        try:
+            resultado = await call_next(context)
+            return resultado
+        except Exception as e:                       # noqa: BLE001
+            erro = e
+            raise
+        finally:
+            obs.registrar_chamada(
+                getattr(context.message, "name", "?"),
+                getattr(context.message, "arguments", None),
+                resultado, erro, (time.perf_counter() - relogio) * 1000,
+            )
+
+
+# Registrado aqui, junto do servidor, e nao no __main__: assim o observador vale
+# para qualquer entrypoint — inclusive um teste que importe `mcp` direto.
+mcp.add_middleware(Observador())
 
 
 # --------------------------------------------------------------------------- #
@@ -527,6 +564,14 @@ def propor_prato(nome: str, ingredientes: list[ItemReceita],
         itens.append({"ingrediente": linha["ingrediente"], "quantidade": quantidade,
                       "unidade_base": base, "comprar": False, "custo_compra": None})
 
+    # Receita longa repete ingrediente de proposito — parmesao no molho e para
+    # gratinar. A chave primaria de `pratos_ingredientes` e (prato_id,
+    # ingrediente), e a segunda linha estourava a ferramenta inteira com
+    # `duplicate key`. O que se via era o agente tentando de novo e escrevendo
+    # OUTRA receita; a de 21 ingredientes que expos isso vinha de uma lasanha.
+    itens, repetidos = consolidar(itens)
+    sem_conversao += repetidos
+
     prato = repo.prato_propor(nome, fonte, porcoes,
                               [r.model_dump() for r in requisitos], itens)
     viab = _avaliar(repo.prato_carregar(prato["id"]))
@@ -1011,18 +1056,53 @@ async def rota_saude(request):
 async def rota_gate(request):
     from starlette.responses import JSONResponse
 
+    relogio = time.perf_counter()
     try:
-        prato = repo.prato_carregar(int(request.path_params["prato_id"]))
+        bruto = int(request.path_params["prato_id"])
+        prato = repo.prato_carregar(bruto)
     except (TypeError, ValueError):
-        prato = None
+        bruto, prato = -1, None
     if prato is None:
         return JSONResponse({"apto": False, "motivo": "prato inexistente"})
 
     viab = _avaliar(prato)
+    # O hook nao passa por ferramenta, entao nao passa pelo middleware — e esta
+    # e a linha mais importante do painel: e onde a fronteira deterministica
+    # aparece disparando, sem depender do que o modelo diz que fez.
+    obs.registrar_gate(bruto, viab.apto, len(viab.pendencias),
+                       (time.perf_counter() - relogio) * 1000)
     return JSONResponse({
         "apto": viab.apto,
         "prato": prato["nome"],
         "pendencias": [p.pergunta for p in viab.pendencias],
+    })
+
+
+@mcp.custom_route("/eventos", methods=["GET"])
+async def rota_eventos(request):
+    """O que o painel le. Somente leitura, e so a FORMA do que trafegou.
+
+    `?desde=N` devolve o que aconteceu depois do evento N. O painel manda o
+    ultimo `seq` que ja tem, entao cada quadro transfere o delta em vez do anel
+    inteiro — e um painel aberto ha uma hora custa o mesmo que um recem-aberto.
+    """
+    from starlette.responses import JSONResponse
+
+    try:
+        desde = int(request.query_params.get("desde", 0))
+    except (TypeError, ValueError):
+        desde = 0
+
+    pool = getattr(repo, "_pool", None)
+    return JSONResponse({
+        "servidor": {
+            **obs.ANEL.resumo(),
+            "ferramentas": len(await mcp.list_tools(run_middleware=False)),
+            "pool_em_uso": getattr(pool, "_nconns", None),
+            "pool_max": getattr(pool, "max_size", None),
+        },
+        "eventos": obs.ANEL.desde(desde),
+        "agregado": obs.ANEL.agregado(),
     })
 
 

@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from domain.unidades import UnidadeIncompativel, converter, normalizar
+from domain.unidades import UnidadeIncompativel, consolidar, converter, normalizar
 
 # nome, unidade da planilha, qtd comprada, preco pago, custo/base esperado
 ARMADILHAS = [
@@ -108,3 +108,65 @@ def test_unidade_desconhecida_nao_inventa_fator():
     """Texto que nao permite extrair medida devolve None, nao um palpite."""
     assert normalizar("caixa").conhecida is False
     assert normalizar("").conhecida is False
+
+
+# --------------------------------------------------------------------------- #
+# Ingrediente repetido na mesma receita
+# --------------------------------------------------------------------------- #
+def test_lasanha_com_parmesao_duas_vezes():
+    """O caso que derrubou a ferramenta em producao, com os numeros dele.
+
+    Uma lasanha de 21 ingredientes citou parmesao duas vezes — no molho e para
+    gratinar, que e como a receita e escrita de verdade. A chave primaria de
+    `pratos_ingredientes` e (prato_id, ingrediente), entao a segunda linha
+    estourava:
+
+        duplicate key value violates unique constraint
+        "pratos_ingredientes_pkey"
+
+    E o que se via no Telegram nao era um erro: era o agente tentando de novo e
+    escrevendo OUTRA receita. Ferramenta que quebra faz o modelo improvisar, e
+    improviso silencioso e pior que a falha.
+    """
+    itens = [
+        {"ingrediente": "Massa de lasanha", "quantidade": Decimal("0.500"),
+         "unidade_base": "kg", "comprar": True, "custo_compra": Decimal("8.90")},
+        {"ingrediente": "Parmesao ralado", "quantidade": Decimal("0.200"),
+         "unidade_base": "kg", "comprar": True, "custo_compra": Decimal("14.00")},
+        {"ingrediente": "Parmesao ralado", "quantidade": Decimal("0.050"),
+         "unidade_base": "kg", "comprar": True, "custo_compra": Decimal("3.50")},
+    ]
+    juntos, avisos = consolidar(itens)
+
+    assert avisos == []
+    assert len(juntos) == 2
+    parmesao = next(i for i in juntos if i["ingrediente"] == "Parmesao ralado")
+    assert parmesao["quantidade"] == Decimal("0.250")
+    assert parmesao["custo_compra"] == Decimal("17.50")
+
+
+def test_a_ordem_da_receita_e_preservada():
+    """Consolidar nao pode reordenar: a receita continua legivel na ordem em
+    que foi escrita, e o primeiro item de um prato costuma ser o principal."""
+    itens = [{"ingrediente": n, "quantidade": Decimal("1"), "unidade_base": "kg",
+              "comprar": False, "custo_compra": None}
+             for n in ("Frango", "Arroz", "Frango", "Batata")]
+    juntos, _ = consolidar(itens)
+    assert [i["ingrediente"] for i in juntos] == ["Frango", "Arroz", "Batata"]
+
+
+def test_unidade_incompativel_no_mesmo_nome_vira_aviso():
+    """Somar 2 un com 0,05 kg daria um numero que PARECE certo.
+
+    O aviso vai pelo mesmo canal do resto do que nao converte, entao o agente
+    pergunta em vez de gravar um total inventado.
+    """
+    itens = [
+        {"ingrediente": "Ovo", "quantidade": Decimal("2"), "unidade_base": "un",
+         "comprar": False, "custo_compra": None},
+        {"ingrediente": "Ovo", "quantidade": Decimal("0.05"), "unidade_base": "kg",
+         "comprar": False, "custo_compra": None},
+    ]
+    juntos, avisos = consolidar(itens)
+    assert len(juntos) == 1
+    assert len(avisos) == 1 and "Ovo" in avisos[0]

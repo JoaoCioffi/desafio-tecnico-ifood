@@ -185,6 +185,16 @@ services:
       context: ..
       dockerfile: .docker/mcp.Dockerfile
     image: sabor-da-maria-mcp:local
+
+    ports:
+      # So o loopback, igual postgres e hermes. O agente NAO usa esta porta —
+      # ele fala pelo nome do servico na rede do compose. Ela existe para o
+      # painel `painel-mcp.py`, que roda no host e so LE o /eventos.
+      #
+      # Publicar em 0.0.0.0 poria dezoito ferramentas de escrita na LAN sem
+      # autenticacao nenhuma: `aceitar_prato` e `fazer_pedido` a um curl de
+      # distancia de qualquer maquina da rede.
+      - "127.0.0.1:8765:8000"
     # Esta imagem e construida aqui, nunca publicada. Sem a politica explicita
     # o compose tenta buscar `sabor-da-maria-mcp:local` no Docker Hub antes de
     # construir e devolve "pull access denied ... may require docker login" —
