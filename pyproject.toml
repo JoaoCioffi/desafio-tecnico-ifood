@@ -1,0 +1,32 @@
+[project]
+name = "sabor-da-maria"
+version = "0.1.0"
+description = "Agente de cardapio e precificacao da Dona Maria, sobre o Hermes Agent"
+requires-python = ">=3.12"
+
+# As dependencias de execucao vivem em requirements.txt — o runner e o unico
+# codigo que roda no host, e ele precisa de quatro pacotes. O servidor MCP tem
+# as suas dentro da propria imagem (.docker/mcp.Dockerfile), porque roda em
+# container e nao compartilha ambiente com ninguem.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+# --------------------------------------------------------------------------- #
+# Testes
+# --------------------------------------------------------------------------- #
+#  `--doctest-modules` e a decisao central aqui: os exemplos ja estao escritos
+#  nas docstrings do dominio, junto do codigo que explicam. Reescrevê-los num
+#  arquivo separado criaria duas versoes da mesma verdade, e a de fora
+#  envelheceria primeiro — que e exatamente o defeito que este projeto passou o
+#  dia combatendo em outros lugares.
+#
+#  `pythonpath` faz `src/backend` virar raiz de import: `domain` e `mcp_server`
+#  ficam importaveis sem prefixo, igual dentro do container. Sem isso o import
+#  relativo de `viabilidade.py` quebra, e os 25 doctests dele nao rodam.
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+addopts = "--doctest-modules -q"
+pythonpath = ["src/backend"]
+testpaths = ["src/backend/domain", "src/backend/tests"]
