@@ -1219,7 +1219,38 @@
       border-color: var(--ink)
     }
 
-    /* ciclo de caixa */
+    /* superficie de customizacao */
+.tri{display:grid;grid-template-columns:0.9fr 1.15fr 1.05fr;gap:14px;flex:1;min-height:0}
+.pane{border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#fff;
+  display:flex;flex-direction:column;gap:10px;min-height:0;justify-content:space-between}
+.pane>h4{font-size:12.4px;font-weight:800;color:var(--ink);letter-spacing:-.2px;
+  display:flex;align-items:center;gap:8px}
+.pane>h4 .ic{color:var(--red);width:17px;height:17px}
+.pane>h4 em{margin-left:auto;font-style:normal;font-size:9.6px;font-weight:800;
+  letter-spacing:.7px;text-transform:uppercase;color:var(--muted)}
+.grp{display:flex;flex-direction:column;gap:5px}
+.grp>span{font-size:8.8px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  color:var(--faint)}
+.chips2{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-family:var(--mono);font-size:10px;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;padding:3px 7px;color:var(--body);white-space:nowrap}
+.chip.core{background:var(--red-tint);border-color:var(--red-soft);color:var(--red-deep);
+  font-weight:700}
+.chip.cli{background:var(--slate-soft);border-color:var(--slate-line);color:var(--slate)}
+.sk{font-size:11.2px;color:var(--ink);line-height:1.3;padding:4px 0 4px 0;
+  border-bottom:1px solid var(--line-2);display:flex;gap:7px}
+.sk:last-child{border-bottom:0}
+.sk b{font-family:var(--mono);font-size:10.2px;font-weight:700;color:var(--body);
+  flex:0 0 118px}
+.sk.core b{color:var(--red-deep)}
+.sk.core{color:var(--red-deep);font-weight:600}
+.vrow{display:flex;gap:8px;font-size:11px;color:var(--ink);line-height:1.3;padding:5px 0;
+  border-bottom:1px solid var(--line-2)}
+.vrow:last-child{border-bottom:0}
+.vrow b{font-family:var(--mono);font-size:10.2px;font-weight:700;color:var(--green-ink);
+  flex:0 0 86px}
+
+/* ciclo de caixa */
     .ciclo {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -2240,7 +2271,108 @@
       </div>
     </section>
 
-    <!-- 8 · o ciclo de caixa -------------------------------------------------- -->
+    <!-- 8 · a customizacao ---------------------------------------------------- -->
+    <section class="slide">
+      <div class="sh">
+        <div>
+          <div class="kick">A customização</div>
+          <h2>Um agente de fábrica não sabe nada disso. <b>Tudo aqui foi definido.</b></h2>
+          <div class="lede">O que sobe pronto numa instalação limpa, sem ninguém responder
+            nada — e o que separa este agente de um assistente genérico.</div>
+        </div>
+        <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O que é nosso</div></div>
+      </div>
+      <div class="body">
+        <div class="tri">
+
+          <div class="pane">
+            <h4><svg class="ic"><use href="#i-brain"/></svg> Quem ele é <em>persona + 7 procedimentos</em></h4>
+            <div class="sk"><b>orquestrar</b>a ordem do atendimento, do primeiro oi ao prato fechado</div>
+            <div class="sk"><b>pesquisar</b>receita real na web, com fonte, aproveitando a despensa</div>
+            <div class="sk core"><b>elicitar</b>descobrir utensílios, técnicas e limites — o coração</div>
+            <div class="sk core"><b>avaliar</b>virar cada pendência do gate em pergunta</div>
+            <div class="sk"><b>explicar-cmv</b>falar de dinheiro sem o jargão do ramo</div>
+            <div class="sk"><b>precificar</b>custo por porção e cenários de margem</div>
+            <div class="sk"><b>publicar</b>pôr à venda, acompanhar pedidos, reinvestir o caixa</div>
+            <div style="padding-top:9px;border-top:1px solid var(--line);
+                        font-size:10.8px;color:var(--muted);line-height:1.38">
+              Carregam <b>sob demanda</b> — o contexto só cresce quando o procedimento
+              é usado.</div>
+          </div>
+
+          <div class="pane">
+            <h4><svg class="ic"><use href="#i-plug"/></svg> O que ele pode fazer <em>18 ferramentas</em></h4>
+            <div class="grp"><span>despensa e dinheiro</span><div class="chips2">
+              <span class="chip">consultar_despensa</span>
+              <span class="chip">consultar_orcamento</span>
+              <span class="chip">calcular_cmv</span>
+              <span class="chip">cenarios_preco</span>
+              <span class="chip">registrar_compra</span>
+            </div></div>
+            <div class="grp"><span>elicitação — o coração</span><div class="chips2">
+              <span class="chip core">registrar_perfil</span>
+              <span class="chip core">consultar_perfil</span>
+            </div></div>
+            <div class="grp"><span>cardápio</span><div class="chips2">
+              <span class="chip">propor_prato</span>
+              <span class="chip">checar_prato</span>
+              <span class="chip core">aceitar_prato</span>
+              <span class="chip">recusar_prato</span>
+              <span class="chip">consultar_cardapio</span>
+            </div></div>
+            <div class="grp"><span>venda</span><div class="chips2">
+              <span class="chip">publicar_prato</span>
+              <span class="chip">despublicar_prato</span>
+              <span class="chip">consultar_pedidos</span>
+            </div></div>
+            <div class="grp"><span>só o cliente enxerga</span><div class="chips2">
+              <span class="chip cli">consultar_cardapio_publico</span>
+              <span class="chip cli">fazer_pedido</span>
+              <span class="chip cli">consultar_pedido</span>
+            </div></div>
+            <div style="padding-top:9px;border-top:1px solid var(--line);
+                        font-size:10.8px;color:var(--red-deep);line-height:1.38">
+              <b>Antes de <code>aceitar_prato</code> roda uma checagem que o modelo não vê,
+              não desliga e não convence.</b> Se falhar, ela bloqueia — nunca libera.</div>
+          </div>
+
+          <div class="pane">
+            <h4><svg class="ic"><use href="#i-db"/></svg> Onde nada se perde <em>9 tabelas · 4 views</em></h4>
+            <div class="grp"><span>a planilha, normalizada na carga</span><div class="chips2">
+              <span class="chip">despensa</span>
+              <span class="chip">precos</span>
+              <span class="chip">orcamento</span>
+            </div></div>
+            <div class="grp"><span>o que a conversa produz</span><div class="chips2">
+              <span class="chip core">perfil</span>
+              <span class="chip">pratos</span>
+              <span class="chip">pratos_ingredientes</span>
+              <span class="chip">compras</span>
+              <span class="chip">cardapio</span>
+              <span class="chip">pedidos</span>
+            </div></div>
+            <div class="grp" style="margin-top:3px"><span>e o que é conta, não anotação</span></div>
+            <div class="vrow"><b>vw_estoque</b>despensa + compras − o que os pratos aceitos reservam</div>
+            <div class="vrow"><b>vw_orcamento</b>os R$ 80 menos as compras</div>
+            <div class="vrow"><b>vw_cardapio</b>o que está no ar, com as porções que restam</div>
+            <div class="vrow"><b>vw_caixa</b>orçamento − compras + vendas líquidas</div>
+            <div style="padding-top:9px;border-top:1px solid var(--line);
+                        font-size:10.8px;color:var(--muted);line-height:1.38">
+              Nada é apagado: recusar um prato <b>muda o status</b>, e as quatro contas
+              se ajustam sozinhas.</div>
+          </div>
+
+        </div>
+        <div class="band"><svg class="ic"><use href="#i-info"/></svg>
+          <span><b>Por que view e não coluna atualizada:</b> estoque e saldo são
+          <b>calculados</b> a partir dos fatos, nunca descontados à mão. Se ela desiste de um
+          prato, o ingrediente e o dinheiro voltam sozinhos — com coluna, cada desistência
+          exigiria um acerto compensatório, e o caminho que esquecesse esse acerto deixaria
+          o saldo mentindo em silêncio.</span></div>
+      </div>
+    </section>
+
+    <!-- 9 · o ciclo de caixa -------------------------------------------------- -->
     <section class="slide">
       <div class="sh">
         <div>
@@ -2331,7 +2463,7 @@
       </div>
     </section>
 
-    <!-- 9 · a demonstração ---------------------------------------------------- -->
+    <!-- 10 · a demonstração ---------------------------------------------------- -->
     <section class="slide">
       <div class="sh">
         <div>
@@ -2411,7 +2543,7 @@
       </div>
     </section>
 
-    <!-- 10 · fecho ------------------------------------------------------------- -->
+    <!-- 11 · fecho ------------------------------------------------------------- -->
     <section class="slide close">
       <div class="inner">
         <div class="kick" style="color:#9E9297">Obrigado</div>
@@ -2446,7 +2578,7 @@
     <button id="prev" aria-label="Anterior"><svg class="ic">
         <use href="#i-left" />
       </svg></button>
-    <span class="count" id="count">1 / 10</span>
+    <span class="count" id="count">1 / 11</span>
     <button id="next" aria-label="Próximo"><svg class="ic">
         <use href="#i-right" />
       </svg></button>
