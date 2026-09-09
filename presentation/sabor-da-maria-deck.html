@@ -159,15 +159,28 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 .pcap .pt .ic{color:var(--red)}
 .pcap .pd{font-size:11.4px;color:var(--muted)}
 
-/* formulas */
-.forms{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;flex:1;min-height:0;margin-top:15px}
-.form{border:1px solid var(--line);border-radius:11px;padding:15px 17px;background:#fff;
-  display:flex;flex-direction:column;justify-content:space-between}
-.form .fh{font-size:11px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
-.form .ff{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.6px}
-.form .ff em{font-style:normal;color:var(--red)}
-.form p{font-size:11.8px;color:var(--body);line-height:1.44}
-.form p b{color:var(--ink);font-weight:700}
+/* fluxo do dinheiro — mesma linguagem visual do ciclo de caixa, de proposito:
+   sao os dois slides que seguem dinheiro, e o olho reconhece a forma */
+.rota{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;flex:1;min-height:0}
+.rp{border:1px solid var(--line);border-radius:12px;padding:16px 13px;background:#fff;
+  display:flex;flex-direction:column;gap:9px;position:relative;text-align:center;
+  align-items:center;justify-content:center}
+.rp::after{content:'';position:absolute;right:-8px;top:50%;width:7px;height:7px;
+  border-top:2px solid var(--faint);border-right:2px solid var(--faint);
+  transform:translateY(-50%) rotate(45deg);z-index:1}
+.rp:last-child::after{display:none}
+.rp .ri{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+  background:var(--slate-soft);color:var(--slate)}
+.rp .ri .ic{width:21px;height:21px}
+.rp b{font-size:12.8px;font-weight:800;color:var(--ink);letter-spacing:-.2px;line-height:1.14}
+.rp .rv{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.6px}
+.rp span{font-size:10.6px;color:var(--muted);line-height:1.3}
+.rp.custo{background:var(--amber-soft);border-color:var(--amber-line)}
+.rp.custo .ri{background:#fff;color:var(--amber)} .rp.custo .rv{color:var(--amber)}
+.rp.taxa{background:var(--red-tint);border-color:var(--red-soft)}
+.rp.taxa .ri{background:#fff;color:var(--red)} .rp.taxa .rv{color:var(--red-deep)}
+.rp.sobra{background:var(--green-soft);border-color:var(--green-line)}
+.rp.sobra .ri{background:#fff;color:var(--green-ink)} .rp.sobra .rv{color:var(--green-ink)}
 
 /* armadilha: duas direcoes */
 .dirs{display:grid;grid-template-columns:1fr 1fr;gap:15px;flex:1;min-height:0}
@@ -500,60 +513,112 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
   </div>
 </section>
 
-<!-- 5 · os dados --------------------------------------------------------- -->
+<!-- 5 · a conta do delivery --------------------------------------------------------- -->
 <section class="slide">
   <div class="sh">
     <div>
       <div class="kick">A conta do delivery</div>
-      <h2>De cada venda, <b>90% são dela</b> — e o insumo sai daí</h2>
-      <div class="lede">O cliente paga <b>P</b>. A plataforma fica com 10%, a Dona Maria recebe
-        0,90·P. O que ela gastou de ingrediente naquele prato é o <b>CMV</b>. Toda a decisão
-        de preço mora entre esses dois números.</div>
+      <h2>Ela não recebe o que o cliente paga. <b>Recebe 90% disso.</b></h2>
+      <div class="lede">O caminho de uma marmita, com os números de um prato de verdade —
+        escondidinho de carne, seis porções.</div>
     </div>
     <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">A conta</div></div>
   </div>
   <div class="body">
-    <div class="pcap">
-      <div class="pt"><svg class="ic"><use href="#i-scale"/></svg> Anatomia de cada R$ 1,00 vendido</div>
-      <div class="pd">Exemplo com a comida em 30% do preço</div>
+    <div class="rota">
+      <div class="rp custo">
+        <div class="ri"><svg class="ic"><use href="#i-package"/></svg></div>
+        <b>O prato</b><div class="rv">R$ 6,18</div>
+        <span>de ingrediente por porção — o custo dela</span></div>
+      <div class="rp">
+        <div class="ri"><svg class="ic"><use href="#i-chef"/></svg></div>
+        <b>Ela põe à venda</b><div class="rv">R$ 20,60</div>
+        <span>o preço é escolha dela</span></div>
+      <div class="rp">
+        <div class="ri"><svg class="ic"><use href="#i-cart"/></svg></div>
+        <b>O cliente paga</b><div class="rv">R$ 20,60</div>
+        <span>o valor cheio do cardápio</span></div>
+      <div class="rp taxa">
+        <div class="ri"><svg class="ic"><use href="#i-scale"/></svg></div>
+        <b>A plataforma leva</b><div class="rv">− R$ 2,06</div>
+        <span>10% sobre a venda, não sobre o lucro</span></div>
+      <div class="rp sobra">
+        <div class="ri"><svg class="ic"><use href="#i-wallet"/></svg></div>
+        <b>Sobra para ela</b><div class="rv">R$ 12,36</div>
+        <span>depois da taxa e do ingrediente</span></div>
+    </div>
+    <div class="pcap" style="margin-top:15px">
+      <div class="pt"><svg class="ic"><use href="#i-layers"/></svg> A mesma coisa, em porcentagem</div>
+      <div class="pd">É assim que ela entende, sem fazer conta</div>
     </div>
     <div class="pbar">
-      <div class="pseg comida"><div class="pv">30%</div><div class="pl">CMV</div>
-        <div class="ps">o ingrediente do prato</div></div>
+      <div class="pseg comida"><div class="pv">30%</div><div class="pl">Comida</div>
+        <div class="ps">o ingrediente</div></div>
       <div class="pseg taxa"><div class="pv">10%</div><div class="pl">Taxa</div></div>
       <div class="pseg margem"><div class="pv">60%</div><div class="pl">Margem</div>
-        <div class="ps">o que sobra para ela — sem fórmula: 30 de comida mais 10 de taxa
-          são 40, então sobram 60</div></div>
+        <div class="ps">30 de comida mais 10 de taxa são 40 — então sobram 60 para ela</div></div>
     </div>
-    <div class="forms">
-      <div class="form">
-        <div class="fh">Ela recebe</div>
-        <div class="ff"><em>0,90</em> · P</div>
-        <p>A taxa incide sobre a <b>venda</b>, não sobre o lucro. Por isso a conta
-          <b>divide</b> — não soma 10% no fim.</p>
-      </div>
-      <div class="form">
-        <div class="fh">Preço mínimo</div>
-        <div class="ff">P ≥ CMV / <em>0,90</em></div>
-        <p>O piso para não perder dinheiro. Abaixo dele, <b>cada prato vendido tira
-          dinheiro do caixa</b> dela.</p>
-      </div>
-      <div class="form">
-        <div class="fh">Lucro</div>
-        <div class="ff">L = <em>0,90</em>·P − CMV</div>
-        <p>O agente propõe <b>três cenários</b> de margem com esta conta aberta — e quem
-          escolhe o preço é ela.</p>
-      </div>
-    </div>
-    <div class="band"><svg class="ic"><use href="#i-alert"/></svg>
-      <span><b>Tudo isso depende do CMV estar certo — e a conta óbvia erra nos dois sentidos.</b>
-      Em 6 dos 37 itens a planilha traz a <b>embalagem</b>, não a medida: o balde de 2 kg
-      superestima o custo em 2×, o frasco de 100 ml subestima em 10×. São R$ 166,73
-      mal contados, um quarto da despensa.</span></div>
+    <div class="band"><svg class="ic"><use href="#i-shield"/></svg>
+      <span><b>Existe um piso, e ele não é negociável.</b>
+      Se os 90% que chegam não cobrem o ingrediente, ela está pagando para trabalhar.
+      O agente propõe <b>três cenários</b> de margem acima desse piso — e quem escolhe qual
+      adotar é ela.</span></div>
   </div>
 </section>
 
-<!-- 6 · arquitetura ------------------------------------------------------ -->
+<!-- 6 · por que existe uma carga ------------------------------------------ -->
+<section class="slide">
+  <div class="sh">
+    <div>
+      <div class="kick">A carga dos dados</div>
+      <h2>O custo não está na planilha. <b>Ele é derivado dela.</b></h2>
+      <div class="lede">Dividir o que ela pagou pelo que levou <b>parece</b> o custo. Em 31 dos
+        37 itens é. Nos outros 6, a coluna <code>Unidade</code> traz a <b>embalagem</b> —
+        e o erro vai para os dois lados.</div>
+    </div>
+    <div class="mark"><div class="nm">Sabor da Maria</div><div class="rl">O ETL</div></div>
+  </div>
+  <div class="body">
+    <div class="dirs">
+      <div class="dir up">
+        <div class="dh"><svg class="ic"><use href="#i-trend"/></svg> Embalagem maior que a medida</div>
+        <h4>Superestima o custo</h4>
+        <div class="sd">O balde tem 2 kg. Tratar o balde como se fosse um quilo <b>dobra</b>
+          o preço do ingrediente.</div>
+        <div class="ex">
+          <div class="exl"><span class="en">Alcaparras</span>
+            <span class="ev">R$ 82,00</span><span class="er">R$ 41,00 / kg</span>
+            <span class="ef">2× a mais</span></div>
+        </div>
+        <div class="conseq"><b>O prato bom parece caro e é descartado.</b>
+          E o balde de R$ 82 continua parado na prateleira, virando prejuízo silencioso.</div>
+      </div>
+      <div class="dir down">
+        <div class="dh"><svg class="ic"><use href="#i-down"/></svg> Embalagem menor que a medida</div>
+        <h4>Subestima o custo</h4>
+        <div class="sd">O frasco tem 100 ml. Tratar o frasco como se fosse um litro
+          <b>divide por dez</b> o preço do ingrediente.</div>
+        <div class="ex">
+          <div class="exl"><span class="en">Adoçante líquido</span>
+            <span class="ev">R$ 1,90</span><span class="er">R$ 19,00 / L</span>
+            <span class="ef">10× a menos</span></div>
+          <div class="exl"><span class="en">Azeite de oliva</span>
+            <span class="ev">R$ 30,99</span><span class="er">R$ 61,98 / L</span>
+            <span class="ef">2× a menos</span></div>
+        </div>
+        <div class="conseq"><b>O preço sai barato e ela vende no prejuízo.</b>
+          Cada marmita tira dinheiro do caixa, e a conta só aparece no fim do mês.</div>
+      </div>
+    </div>
+    <div class="band"><svg class="ic"><use href="#i-alert"/></svg>
+      <span><b>São R$ 166,73 mal contados — um quarto de tudo que ela gastou.</b>
+      Por isso a planilha passa por uma <b>carga</b> antes de qualquer conversa: cada item é
+      convertido para quilo, litro ou unidade real. O custo chega pronto, e a conversão
+      nunca acontece no meio de um papo.</span></div>
+  </div>
+</section>
+
+<!-- 7 · arquitetura ------------------------------------------------------ -->
 <section class="slide">
   <div class="sh">
     <div>
@@ -614,7 +679,7 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
   </div>
 </section>
 
-<!-- 7 · o ciclo de caixa -------------------------------------------------- -->
+<!-- 8 · o ciclo de caixa -------------------------------------------------- -->
 <section class="slide">
   <div class="sh">
     <div>
@@ -673,7 +738,7 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
   </div>
 </section>
 
-<!-- 8 · a demonstração ---------------------------------------------------- -->
+<!-- 9 · a demonstração ---------------------------------------------------- -->
 <section class="slide">
   <div class="sh">
     <div>
@@ -732,7 +797,7 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
   </div>
 </section>
 
-<!-- 9 · fecho ------------------------------------------------------------- -->
+<!-- 10 · fecho ------------------------------------------------------------- -->
 <section class="slide close">
   <div class="inner">
     <div class="kick" style="color:#9E9297">Obrigado</div>
@@ -757,7 +822,7 @@ html,body{background:#17171A;font-family:var(--sans);color:var(--body);height:10
 <div class="hint">← → para navegar</div>
 <nav class="nav">
   <button id="prev" aria-label="Anterior"><svg class="ic"><use href="#i-left"/></svg></button>
-  <span class="count" id="count">1 / 9</span>
+  <span class="count" id="count">1 / 10</span>
   <button id="next" aria-label="Próximo"><svg class="ic"><use href="#i-right"/></svg></button>
 </nav>
 
